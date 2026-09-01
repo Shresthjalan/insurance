@@ -1,5 +1,5 @@
 import { Worker } from 'bullmq';
-import { redisConnection, documentQueue, whatsappQueue } from './queues';
+import { redisConnection, whatsappQueue } from './queues';
 import { quotationRequestService } from '../services/quotation';
 import { CarQuotationService } from '../services/quotation/CarQuotationService';
 import { HealthQuotationService } from '../services/quotation/HealthQuotationService';
@@ -8,6 +8,7 @@ import { LifeQuotationService } from '../services/quotation/LifeQuotationService
 import { ProviderAAdapter } from '../providers/quotation/ProviderAAdapter';
 import { ProviderBAdapter } from '../providers/quotation/ProviderBAdapter';
 import { leadService } from '../services/LeadService';
+import { customerService } from '../services/CustomerService';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 import { isTransientError } from '../utils/errors';
@@ -86,16 +87,20 @@ async function processQuotation(data: QuotationJobData): Promise<void> {
     count: saved.length,
   });
 
-  // Queue document generation for each quotation
-  for (const q of saved) {
-    await documentQueue.add('generate_document', {
-      quotationId: q.id,
+  // Notify the customer over WhatsApp now that quotes are ready
+  const customer = await customerService.findById(customerId);
+  if (customer?.normalizedPhoneNumber) {
+    await whatsappQueue.add('send_quotation_result', {
+      conversationId: request?.conversationId ?? null,
       customerId,
-      insuranceType,
+      phoneNumber: customer.normalizedPhoneNumber,
+      messageType: 'quotation_ready',
+      payload: {
+        quotationRequestId,
+        quotationCount: saved.length,
+      },
     });
   }
-
-  // Queue WhatsApp delivery after documents (handled by document worker)
 }
 
 export function createQuotationWorker() {

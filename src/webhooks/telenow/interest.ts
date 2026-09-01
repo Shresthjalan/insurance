@@ -3,9 +3,11 @@ import { customerService } from '../../services/CustomerService';
 import { leadService } from '../../services/LeadService';
 import { insuranceInterestService } from '../../services/InsuranceInterestService';
 import { eventService } from '../../services/EventService';
-import { prisma } from '../../db';
+import { supabase, unwrap } from '../../db';
+import { Id } from '../../utils/idGenerator';
 import { ValidationError } from '../../utils/errors';
 import { logger } from '../../utils/logger';
+import type { WebhookEvent, Conversation } from '../../types';
 
 const interestSchema = z.object({
   phone_number: z.string().min(7),
@@ -28,9 +30,14 @@ export async function handleTelenowInterest(
 
   // Idempotency: check if this external event was already processed
   if (external_event_id) {
-    const existing = await prisma.webhookEvent.findFirst({
-      where: { externalEventId: external_event_id, processingStatus: 'processed' },
-    });
+    const existing = unwrap<WebhookEvent | null>(
+      await supabase
+        .from('webhook_events')
+        .select('*')
+        .eq('externalEventId', external_event_id)
+        .eq('processingStatus', 'processed')
+        .maybeSingle(),
+    );
     if (existing) {
       logger.info('Duplicate interest webhook ignored', { external_event_id, request_id: requestId });
       // Still return the original IDs by looking up lead/interest
@@ -46,17 +53,22 @@ export async function handleTelenowInterest(
   }
 
   // Record the webhook event
-  const webhookEvent = await prisma.webhookEvent.create({
-    data: {
-      provider: 'telenow',
-      eventType: 'interest',
-      externalEventId: external_event_id ?? null,
-      requestId,
-      payload: body as Record<string, unknown>,
-      processingStatus: 'processing',
-      receivedAt: new Date(),
-    },
-  });
+  const webhookEvent = unwrap<WebhookEvent>(
+    await supabase
+      .from('webhook_events')
+      .insert({
+        id: Id.webhookEvent(),
+        provider: 'telenow',
+        eventType: 'interest',
+        externalEventId: external_event_id ?? null,
+        requestId,
+        payload: body as Record<string, unknown>,
+        processingStatus: 'processing',
+        receivedAt: new Date().toISOString(),
+      })
+      .select()
+      .single(),
+  );
 
   try {
     // Find or create customer
@@ -81,9 +93,16 @@ export async function handleTelenowInterest(
     });
 
     // Log the event
-    const conv = await prisma.conversation.findFirst({
-      where: { customerId: customer.id, channel: 'voice', status: 'active' },
-    });
+    const conversations = unwrap<Conversation[]>(
+      await supabase
+        .from('conversations')
+        .select('*')
+        .eq('customerId', customer.id)
+        .eq('channel', 'voice')
+        .eq('status', 'active')
+        .limit(1),
+    );
+    const conv = conversations[0];
     if (conv) {
       await eventService.log({
         conversationId: conv.id,
@@ -95,10 +114,10 @@ export async function handleTelenowInterest(
     }
 
     // Mark webhook processed
-    await prisma.webhookEvent.update({
-      where: { id: webhookEvent.id },
-      data: { processingStatus: 'processed', processedAt: new Date() },
-    });
+    await supabase
+      .from('webhook_events')
+      .update({ processingStatus: 'processed', processedAt: new Date().toISOString() })
+      .eq('id', webhookEvent.id);
 
     logger.info('Telenow interest processed', {
       request_id: requestId,
@@ -110,13 +129,13 @@ export async function handleTelenowInterest(
 
     return { lead_id: lead.id, interest_id: interest.id };
   } catch (err) {
-    await prisma.webhookEvent.update({
-      where: { id: webhookEvent.id },
-      data: {
+    await supabase
+      .from('webhook_events')
+      .update({
         processingStatus: 'failed',
         errorMessage: err instanceof Error ? err.message : String(err),
-      },
-    });
+      })
+      .eq('id', webhookEvent.id);
     throw err;
   }
 }

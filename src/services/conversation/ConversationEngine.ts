@@ -1,8 +1,7 @@
-import { prisma } from '../../db';
-import { logger } from '../../utils/logger';
+import { supabase, unwrap } from '../../db';
+import { Id } from '../../utils/idGenerator';
 import { getFlow } from '../../flows';
-import type { Channel, MessageSource, InsuranceType, FlowStep, StepType } from '../../types';
-import type { Conversation, ConversationStep } from '@prisma/client';
+import type { Channel, MessageSource, InsuranceType, FlowStep, Conversation, ConversationStep } from '../../types';
 import { NotFoundError, ValidationError } from '../../utils/errors';
 
 export interface ConversationContext {
@@ -28,15 +27,15 @@ export class ConversationEngine {
     const initialStep = flow.steps.find((s) => s.key === flow.initialStep);
     if (!initialStep) return null;
 
-    await prisma.conversation.update({
-      where: { id: conversationId },
-      data: {
+    await supabase
+      .from('conversations')
+      .update({
         currentFlow: flowName,
         currentState: flow.initialStep,
         expectedInputType: initialStep.type,
         expectedInputIds: initialStep.options?.map((o) => o.id) ?? [],
-      },
-    });
+      })
+      .eq('id', conversationId);
 
     // Create a pending step record
     await this.createStep(conversationId, flowName, flow.version, initialStep);
@@ -50,23 +49,33 @@ export class ConversationEngine {
     source: MessageSource;
     language?: string;
   }): Promise<Conversation> {
-    const existing = await prisma.conversation.findFirst({
-      where: { customerId: input.customerId, channel: input.channel, status: 'active' },
-      orderBy: { startedAt: 'desc' },
-    });
+    const existing = unwrap<Conversation[]>(
+      await supabase
+        .from('conversations')
+        .select('*')
+        .eq('customerId', input.customerId)
+        .eq('channel', input.channel)
+        .eq('status', 'active')
+        .order('startedAt', { ascending: false })
+        .limit(1),
+    );
+    if (existing.length > 0) return existing[0];
 
-    if (existing) return existing;
-
-    return prisma.conversation.create({
-      data: {
-        customerId: input.customerId,
-        channel: input.channel,
-        source: input.source,
-        status: 'active',
-        language: input.language ?? null,
-        startedAt: new Date(),
-      },
-    });
+    return unwrap<Conversation>(
+      await supabase
+        .from('conversations')
+        .insert({
+          id: Id.conversation(),
+          customerId: input.customerId,
+          channel: input.channel,
+          source: input.source,
+          status: 'active',
+          language: input.language ?? null,
+          startedAt: new Date().toISOString(),
+        })
+        .select()
+        .single(),
+    );
   }
 
   // ─── Process inbound interaction ──────────────────────────────
@@ -76,10 +85,12 @@ export class ConversationEngine {
     inputId: string,
     inputValue?: string,
   ): Promise<AdvanceResult> {
-    const conversation = await prisma.conversation.findUnique({ where: { id: conversationId } });
+    const conversation = unwrap<Conversation | null>(
+      await supabase.from('conversations').select('*').eq('id', conversationId).maybeSingle(),
+    );
     if (!conversation) throw new NotFoundError('Conversation');
 
-    const { currentFlow, currentState, expectedInputType, expectedInputIds } = conversation;
+    const { currentFlow, currentState, expectedInputIds } = conversation;
 
     // No active state — treat as home
     if (!currentFlow || !currentState) {
@@ -141,24 +152,24 @@ export class ConversationEngine {
 
     // ── End of flow ──────────────────────────────────────────────
     if (!nextStepKey) {
-      await prisma.conversation.update({
-        where: { id: conversationId },
-        data: { currentState: 'completed', expectedInputType: null, expectedInputIds: [] },
-      });
+      await supabase
+        .from('conversations')
+        .update({ currentState: 'completed', expectedInputType: null, expectedInputIds: [] })
+        .eq('id', conversationId);
       return { conversation, nextStep: null, completed: true };
     }
 
     // ── Advance to next step ─────────────────────────────────────
     const nextStep = flow.steps.find((s) => s.key === nextStepKey) ?? null;
     if (nextStep) {
-      await prisma.conversation.update({
-        where: { id: conversationId },
-        data: {
+      await supabase
+        .from('conversations')
+        .update({
           currentState: nextStep.key,
           expectedInputType: nextStep.type,
           expectedInputIds: nextStep.options?.map((o) => o.id) ?? [],
-        },
-      });
+        })
+        .eq('id', conversationId);
       await this.createStep(conversationId, currentFlow, flow.version, nextStep);
     }
 
@@ -168,7 +179,9 @@ export class ConversationEngine {
   // ─── Current step (for UI resend) ─────────────────────────────
 
   async getCurrentStep(conversationId: string): Promise<FlowStep | null> {
-    const conversation = await prisma.conversation.findUnique({ where: { id: conversationId } });
+    const conversation = unwrap<Conversation | null>(
+      await supabase.from('conversations').select('*').eq('id', conversationId).maybeSingle(),
+    );
     if (!conversation?.currentFlow || !conversation.currentState) return null;
 
     const flow = getFlow(conversation.currentFlow);
@@ -176,17 +189,21 @@ export class ConversationEngine {
   }
 
   async getContext(conversationId: string): Promise<Record<string, unknown>> {
-    const conversation = await prisma.conversation.findUnique({ where: { id: conversationId } });
-    return (conversation?.contextJson as Record<string, unknown>) ?? {};
+    const conversation = unwrap<Conversation | null>(
+      await supabase.from('conversations').select('*').eq('id', conversationId).maybeSingle(),
+    );
+    return conversation?.contextJson ?? {};
   }
 
   async setContext(conversationId: string, update: Record<string, unknown>): Promise<void> {
-    const conversation = await prisma.conversation.findUnique({ where: { id: conversationId } });
-    const existing = (conversation?.contextJson as Record<string, unknown>) ?? {};
-    await prisma.conversation.update({
-      where: { id: conversationId },
-      data: { contextJson: { ...existing, ...update } },
-    });
+    const conversation = unwrap<Conversation | null>(
+      await supabase.from('conversations').select('*').eq('id', conversationId).maybeSingle(),
+    );
+    const existing = conversation?.contextJson ?? {};
+    await supabase
+      .from('conversations')
+      .update({ contextJson: { ...existing, ...update } })
+      .eq('id', conversationId);
   }
 
   // ─── Helpers ──────────────────────────────────────────────────
@@ -198,23 +215,23 @@ export class ConversationEngine {
     step: FlowStep,
   ): Promise<void> {
     // Mark prior pending steps for this conversation as skipped
-    await prisma.conversationStep.updateMany({
-      where: { conversationId, status: 'pending' },
-      data: { status: 'skipped' },
-    });
+    await supabase
+      .from('conversation_steps')
+      .update({ status: 'skipped' })
+      .eq('conversationId', conversationId)
+      .eq('status', 'pending');
 
-    await prisma.conversationStep.create({
-      data: {
-        conversationId,
-        flowName,
-        flowVersion: version,
-        stepKey: step.key,
-        stepType: step.type,
-        status: 'active',
-        questionPayload: step as unknown as Record<string, unknown>,
-        expectedInput: step.options ?? null,
-        startedAt: new Date(),
-      },
+    await supabase.from('conversation_steps').insert({
+      id: Id.conversationStep(),
+      conversationId,
+      flowName,
+      flowVersion: version,
+      stepKey: step.key,
+      stepType: step.type,
+      status: 'active',
+      questionPayload: step as unknown as Record<string, unknown>,
+      expectedInput: step.options ?? null,
+      startedAt: new Date().toISOString(),
     });
   }
 
@@ -224,20 +241,26 @@ export class ConversationEngine {
     answerValue: string,
     answerRaw?: string,
   ): Promise<void> {
-    const step = await prisma.conversationStep.findFirst({
-      where: { conversationId, stepKey, status: 'active' },
-    });
+    const step = unwrap<ConversationStep[]>(
+      await supabase
+        .from('conversation_steps')
+        .select('*')
+        .eq('conversationId', conversationId)
+        .eq('stepKey', stepKey)
+        .eq('status', 'active')
+        .limit(1),
+    )[0];
     if (!step) return;
 
-    await prisma.conversationStep.update({
-      where: { id: step.id },
-      data: {
+    await supabase
+      .from('conversation_steps')
+      .update({
         status: 'answered',
         answerValue,
         answerNormalized: answerRaw ? { raw: answerRaw, normalized: answerValue } : { normalized: answerValue },
-        answeredAt: new Date(),
-      },
-    });
+        answeredAt: new Date().toISOString(),
+      })
+      .eq('id', step.id);
   }
 
   private async updateContext(
@@ -245,13 +268,15 @@ export class ConversationEngine {
     stepKey: string,
     value: string,
   ): Promise<void> {
-    const conversation = await prisma.conversation.findUnique({ where: { id: conversationId } });
-    const ctx = (conversation?.contextJson as Record<string, unknown>) ?? {};
+    const conversation = unwrap<Conversation | null>(
+      await supabase.from('conversations').select('*').eq('id', conversationId).maybeSingle(),
+    );
+    const ctx = conversation?.contextJson ?? {};
     ctx[stepKey] = value;
-    await prisma.conversation.update({
-      where: { id: conversationId },
-      data: { contextJson: ctx, lastMessageAt: new Date() },
-    });
+    await supabase
+      .from('conversations')
+      .update({ contextJson: ctx, lastMessageAt: new Date().toISOString() })
+      .eq('id', conversationId);
   }
 }
 

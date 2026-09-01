@@ -22,11 +22,6 @@ export const quotationQueue = new Queue('quotation_jobs', {
   defaultJobOptions,
 });
 
-export const documentQueue = new Queue('document_jobs', {
-  connection: redisConnection,
-  defaultJobOptions,
-});
-
 export const whatsappQueue = new Queue('whatsapp_jobs', {
   connection: redisConnection,
   defaultJobOptions: { ...defaultJobOptions, attempts: 5 },

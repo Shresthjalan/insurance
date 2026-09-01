@@ -3,9 +3,11 @@ import { customerService } from '../../services/CustomerService';
 import { leadService } from '../../services/LeadService';
 import { insuranceInterestService } from '../../services/InsuranceInterestService';
 import { advisorService } from '../../services/AdvisorService';
-import { prisma } from '../../db';
+import { supabase, unwrap } from '../../db';
+import { Id } from '../../utils/idGenerator';
 import { ValidationError } from '../../utils/errors';
 import { logger } from '../../utils/logger';
+import type { WebhookEvent, AdvisorAppointment } from '../../types';
 
 const advisorSchema = z.object({
   phone_number: z.string().min(7),
@@ -38,31 +40,47 @@ export async function handleTelenowAdvisor(
 
   // Idempotency
   if (data.external_event_id) {
-    const existing = await prisma.webhookEvent.findFirst({
-      where: { externalEventId: data.external_event_id, processingStatus: 'processed' },
-    });
+    const existing = unwrap<WebhookEvent | null>(
+      await supabase
+        .from('webhook_events')
+        .select('*')
+        .eq('externalEventId', data.external_event_id)
+        .eq('processingStatus', 'processed')
+        .maybeSingle(),
+    );
     if (existing) {
       const customer = await customerService.findByPhone(data.phone_number);
       if (customer) {
-        const appt = await prisma.advisorAppointment.findFirst({
-          where: { customerId: customer.id, requestedDate: data.meeting_date, requestedTime: data.meeting_time },
-        });
-        if (appt) return { appointment_id: appt.id, status: appt.status };
+        const appts = unwrap<AdvisorAppointment[]>(
+          await supabase
+            .from('advisor_appointments')
+            .select('*')
+            .eq('customerId', customer.id)
+            .eq('requestedDate', data.meeting_date)
+            .eq('requestedTime', data.meeting_time)
+            .limit(1),
+        );
+        if (appts[0]) return { appointment_id: appts[0].id, status: appts[0].status };
       }
     }
   }
 
-  const webhookEvent = await prisma.webhookEvent.create({
-    data: {
-      provider: 'telenow',
-      eventType: 'advisor_call',
-      externalEventId: data.external_event_id ?? null,
-      requestId,
-      payload: body as Record<string, unknown>,
-      processingStatus: 'processing',
-      receivedAt: new Date(),
-    },
-  });
+  const webhookEvent = unwrap<WebhookEvent>(
+    await supabase
+      .from('webhook_events')
+      .insert({
+        id: Id.webhookEvent(),
+        provider: 'telenow',
+        eventType: 'advisor_call',
+        externalEventId: data.external_event_id ?? null,
+        requestId,
+        payload: body as Record<string, unknown>,
+        processingStatus: 'processing',
+        receivedAt: new Date().toISOString(),
+      })
+      .select()
+      .single(),
+  );
 
   try {
     const customer = await customerService.findOrCreate({
@@ -94,10 +112,10 @@ export async function handleTelenowAdvisor(
 
     await leadService.updateStatus(lead.id, 'advisor_requested');
 
-    await prisma.webhookEvent.update({
-      where: { id: webhookEvent.id },
-      data: { processingStatus: 'processed', processedAt: new Date() },
-    });
+    await supabase
+      .from('webhook_events')
+      .update({ processingStatus: 'processed', processedAt: new Date().toISOString() })
+      .eq('id', webhookEvent.id);
 
     logger.info('Telenow advisor appointment created', {
       request_id: requestId,
@@ -107,10 +125,13 @@ export async function handleTelenowAdvisor(
 
     return { appointment_id: appointment.id, status: appointment.status };
   } catch (err) {
-    await prisma.webhookEvent.update({
-      where: { id: webhookEvent.id },
-      data: { processingStatus: 'failed', errorMessage: err instanceof Error ? err.message : String(err) },
-    });
+    await supabase
+      .from('webhook_events')
+      .update({
+        processingStatus: 'failed',
+        errorMessage: err instanceof Error ? err.message : String(err),
+      })
+      .eq('id', webhookEvent.id);
     throw err;
   }
 }

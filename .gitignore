@@ -9,9 +9,6 @@ dist/
 .env.local
 .env.*.local
 
-# Prisma generated client
-node_modules/.prisma/
-
 # Logs
 logs/
 *.log

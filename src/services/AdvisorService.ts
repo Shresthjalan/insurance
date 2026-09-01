@@ -1,8 +1,12 @@
 import { parse, isValid, isBefore, startOfToday } from 'date-fns';
-import { prisma } from '../db';
+import { supabase, unwrap, unwrapList } from '../db';
 import { ValidationError, ConflictError } from '../utils/errors';
+import { Id } from '../utils/idGenerator';
 import { logger } from '../utils/logger';
+import type { AdvisorAppointment } from '../types';
 import type { AppointmentStatus, AppointmentSource } from '../types';
+
+const CLOSED_APPOINTMENT_STATUSES = ['cancelled', 'failed', 'no_show'];
 
 export interface CreateAppointmentInput {
   customerId: string;
@@ -17,36 +21,43 @@ export interface CreateAppointmentInput {
 }
 
 export class AdvisorService {
-  async create(input: CreateAppointmentInput) {
+  async create(input: CreateAppointmentInput): Promise<AdvisorAppointment> {
     this.validateDateTime(input.requestedDate, input.requestedTime);
 
     // Guard against duplicate requests for the same slot
-    const duplicate = await prisma.advisorAppointment.findFirst({
-      where: {
-        customerId: input.customerId,
-        requestedDate: input.requestedDate,
-        requestedTime: input.requestedTime,
-        status: { notIn: ['cancelled', 'failed', 'no_show'] },
-      },
-    });
-    if (duplicate) {
+    const duplicates = unwrap<AdvisorAppointment[]>(
+      await supabase
+        .from('advisor_appointments')
+        .select('*')
+        .eq('customerId', input.customerId)
+        .eq('requestedDate', input.requestedDate)
+        .eq('requestedTime', input.requestedTime)
+        .not('status', 'in', `(${CLOSED_APPOINTMENT_STATUSES.join(',')})`)
+        .limit(1),
+    );
+    if (duplicates.length > 0) {
       throw new ConflictError('An appointment already exists for this date and time');
     }
 
-    const appointment = await prisma.advisorAppointment.create({
-      data: {
-        customerId: input.customerId,
-        leadId: input.leadId ?? null,
-        insuranceInterestId: input.insuranceInterestId ?? null,
-        conversationId: input.conversationId ?? null,
-        requestedDate: input.requestedDate,
-        requestedTime: input.requestedTime,
-        timezone: input.timezone,
-        source: input.source,
-        notes: input.notes ?? null,
-        status: 'requested',
-      },
-    });
+    const appointment = unwrap<AdvisorAppointment>(
+      await supabase
+        .from('advisor_appointments')
+        .insert({
+          id: Id.appointment(),
+          customerId: input.customerId,
+          leadId: input.leadId ?? null,
+          insuranceInterestId: input.insuranceInterestId ?? null,
+          conversationId: input.conversationId ?? null,
+          requestedDate: input.requestedDate,
+          requestedTime: input.requestedTime,
+          timezone: input.timezone,
+          source: input.source,
+          notes: input.notes ?? null,
+          status: 'requested',
+        })
+        .select()
+        .single(),
+    );
 
     logger.info('Advisor appointment created', {
       appointment_id: appointment.id,
@@ -57,38 +68,43 @@ export class AdvisorService {
     return appointment;
   }
 
-  async updateStatus(appointmentId: string, status: AppointmentStatus) {
-    const data: Record<string, unknown> = { status };
-    if (status === 'confirmed') data.confirmedAt = new Date();
-    if (status === 'assigned') data.assignedAt = new Date();
-    if (status === 'completed') data.completedAt = new Date();
-    if (status === 'cancelled') data.cancelledAt = new Date();
+  async updateStatus(appointmentId: string, status: AppointmentStatus): Promise<AdvisorAppointment> {
+    const updates: Record<string, unknown> = { status };
+    const now = new Date().toISOString();
+    if (status === 'confirmed') updates.confirmedAt = now;
+    if (status === 'assigned') updates.assignedAt = now;
+    if (status === 'completed') updates.completedAt = now;
+    if (status === 'cancelled') updates.cancelledAt = now;
 
-    return prisma.advisorAppointment.update({ where: { id: appointmentId }, data });
+    return unwrap<AdvisorAppointment>(
+      await supabase.from('advisor_appointments').update(updates).eq('id', appointmentId).select().single(),
+    );
   }
 
-  async assign(appointmentId: string, advisorId: string) {
-    return prisma.advisorAppointment.update({
-      where: { id: appointmentId },
-      data: { advisorId, status: 'assigned', assignedAt: new Date() },
-    });
+  async assign(appointmentId: string, advisorId: string): Promise<AdvisorAppointment> {
+    return unwrap<AdvisorAppointment>(
+      await supabase
+        .from('advisor_appointments')
+        .update({ advisorId, status: 'assigned', assignedAt: new Date().toISOString() })
+        .eq('id', appointmentId)
+        .select()
+        .single(),
+    );
   }
 
-  async findById(id: string) {
-    return prisma.advisorAppointment.findUnique({ where: { id } });
+  async findById(id: string): Promise<AdvisorAppointment | null> {
+    return unwrap<AdvisorAppointment | null>(
+      await supabase.from('advisor_appointments').select('*').eq('id', id).maybeSingle(),
+    );
   }
 
   async list(filters: { status?: AppointmentStatus; date?: string } = {}, page = 1, limit = 50) {
-    const skip = (page - 1) * limit;
-    const where = {
-      ...(filters.status && { status: filters.status }),
-      ...(filters.date && { requestedDate: filters.date }),
-    };
-    const [items, total] = await Promise.all([
-      prisma.advisorAppointment.findMany({ where, skip, take: limit, orderBy: { createdAt: 'desc' } }),
-      prisma.advisorAppointment.count({ where }),
-    ]);
-    return { items, total, page, limit };
+    const from = (page - 1) * limit;
+    let query = supabase.from('advisor_appointments').select('*', { count: 'exact' });
+    if (filters.status) query = query.eq('status', filters.status);
+    if (filters.date) query = query.eq('requestedDate', filters.date);
+    const result = await query.order('createdAt', { ascending: false }).range(from, from + limit - 1);
+    return { ...unwrapList<AdvisorAppointment>(result), page, limit };
   }
 
   private validateDateTime(date: string, time: string): void {

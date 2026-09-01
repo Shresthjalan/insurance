@@ -10,10 +10,11 @@ import { LifeQuotationService } from '../../services/quotation/LifeQuotationServ
 import { ProviderAAdapter } from '../../providers/quotation/ProviderAAdapter';
 import { ProviderBAdapter } from '../../providers/quotation/ProviderBAdapter';
 import { quotationQueue } from '../../workers/queues';
-import { prisma } from '../../db';
+import { supabase, unwrap } from '../../db';
+import { Id } from '../../utils/idGenerator';
 import { ValidationError } from '../../utils/errors';
 import { logger } from '../../utils/logger';
-import type { InsuranceType } from '../../types';
+import type { InsuranceType, WebhookEvent, QuotationRequest } from '../../types';
 
 const quotationSchema = z.object({
   phone_number: z.string().min(7),
@@ -65,34 +66,49 @@ export async function handleTelenowQuotation(
 
   // Idempotency
   if (external_event_id) {
-    const existing = await prisma.webhookEvent.findFirst({
-      where: { externalEventId: external_event_id, processingStatus: 'processed' },
-    });
+    const existing = unwrap<WebhookEvent | null>(
+      await supabase
+        .from('webhook_events')
+        .select('*')
+        .eq('externalEventId', external_event_id)
+        .eq('processingStatus', 'processed')
+        .maybeSingle(),
+    );
     if (existing) {
       logger.info('Duplicate quotation webhook ignored', { external_event_id, request_id: requestId });
       // Return early — find existing request
       const customer = await customerService.findByPhone(phone_number);
       if (customer) {
-        const req = await prisma.quotationRequest.findFirst({
-          where: { customerId: customer.id, insuranceType: insurance_type },
-          orderBy: { createdAt: 'desc' },
-        });
-        if (req) return { quotation_request_id: req.id, status: req.status };
+        const reqs = unwrap<QuotationRequest[]>(
+          await supabase
+            .from('quotation_requests')
+            .select('*')
+            .eq('customerId', customer.id)
+            .eq('insuranceType', insurance_type)
+            .order('createdAt', { ascending: false })
+            .limit(1),
+        );
+        if (reqs[0]) return { quotation_request_id: reqs[0].id, status: reqs[0].status };
       }
     }
   }
 
-  const webhookEvent = await prisma.webhookEvent.create({
-    data: {
-      provider: 'telenow',
-      eventType: 'quotation',
-      externalEventId: external_event_id ?? null,
-      requestId,
-      payload: body as Record<string, unknown>,
-      processingStatus: 'processing',
-      receivedAt: new Date(),
-    },
-  });
+  const webhookEvent = unwrap<WebhookEvent>(
+    await supabase
+      .from('webhook_events')
+      .insert({
+        id: Id.webhookEvent(),
+        provider: 'telenow',
+        eventType: 'quotation',
+        externalEventId: external_event_id ?? null,
+        requestId,
+        payload: body as Record<string, unknown>,
+        processingStatus: 'processing',
+        receivedAt: new Date().toISOString(),
+      })
+      .select()
+      .single(),
+  );
 
   try {
     // Validate and normalize the type-specific payload
@@ -125,10 +141,10 @@ export async function handleTelenowQuotation(
       normalizedPayload,
     });
 
-    await prisma.webhookEvent.update({
-      where: { id: webhookEvent.id },
-      data: { processingStatus: 'processed', processedAt: new Date() },
-    });
+    await supabase
+      .from('webhook_events')
+      .update({ processingStatus: 'processed', processedAt: new Date().toISOString() })
+      .eq('id', webhookEvent.id);
 
     logger.info('Telenow quotation queued', {
       request_id: requestId,
@@ -139,10 +155,10 @@ export async function handleTelenowQuotation(
 
     return { quotation_request_id: quotationRequest.id, status: 'queued' };
   } catch (err) {
-    await prisma.webhookEvent.update({
-      where: { id: webhookEvent.id },
-      data: { processingStatus: 'failed', errorMessage: err instanceof Error ? err.message : String(err) },
-    });
+    await supabase
+      .from('webhook_events')
+      .update({ processingStatus: 'failed', errorMessage: err instanceof Error ? err.message : String(err) })
+      .eq('id', webhookEvent.id);
     throw err;
   }
 }

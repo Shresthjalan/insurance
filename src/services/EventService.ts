@@ -1,4 +1,5 @@
-import { prisma } from '../db';
+import { supabase, unwrap } from '../db';
+import { Id } from '../utils/idGenerator';
 import { logger } from '../utils/logger';
 
 export type ConversationEventType =
@@ -32,31 +33,32 @@ export interface LogEventInput {
 
 export class EventService {
   async log(input: LogEventInput): Promise<void> {
-    try {
-      await prisma.conversationEvent.create({
-        data: {
-          conversationId: input.conversationId,
-          customerId: input.customerId,
-          eventType: input.eventType,
-          eventData: input.eventData ?? {},
-          source: input.source ?? null,
-        },
-      });
-    } catch (err) {
+    const { error } = await supabase.from('conversation_events').insert({
+      id: Id.conversationEvent(),
+      conversationId: input.conversationId,
+      customerId: input.customerId,
+      eventType: input.eventType,
+      eventData: input.eventData ?? {},
+      source: input.source ?? null,
+    });
+    if (error) {
       // Event logging should never break the main flow
       logger.warn('Failed to log conversation event', {
         conversation_id: input.conversationId,
         event_type: input.eventType,
-        error: String(err),
+        error: error.message,
       });
     }
   }
 
   async getHistory(conversationId: string) {
-    return prisma.conversationEvent.findMany({
-      where: { conversationId },
-      orderBy: { createdAt: 'asc' },
-    });
+    return unwrap(
+      await supabase
+        .from('conversation_events')
+        .select('*')
+        .eq('conversationId', conversationId)
+        .order('createdAt', { ascending: true }),
+    );
   }
 }
 

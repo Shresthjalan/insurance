@@ -3,10 +3,11 @@ import { redisConnection } from './queues';
 import { whatsAppService } from '../services/whatsapp/WhatsAppService';
 import { messageBuilder } from '../services/whatsapp/MessageBuilder';
 import { quotationRequestService } from '../services/quotation';
-import { prisma } from '../db';
+import { supabase, unwrap } from '../db';
+import { Id } from '../utils/idGenerator';
 import { config } from '../config';
 import { logger } from '../utils/logger';
-import type { WhatsAppJobData } from '../types';
+import type { WhatsAppJobData, Conversation } from '../types';
 
 async function processWhatsAppJob(data: WhatsAppJobData): Promise<void> {
   const { conversationId, customerId, phoneNumber, messageType, payload } = data;
@@ -14,22 +15,33 @@ async function processWhatsAppJob(data: WhatsAppJobData): Promise<void> {
   // Ensure a conversation exists (it may have been created by Telenow without a WA conversation)
   let convId = conversationId;
   if (!convId) {
-    const conv = await prisma.conversation.findFirst({
-      where: { customerId, channel: 'whatsapp', status: 'active' },
-    });
-    if (!conv) {
-      const created = await prisma.conversation.create({
-        data: {
-          customerId,
-          channel: 'whatsapp',
-          source: 'meta',
-          status: 'active',
-          startedAt: new Date(),
-        },
-      });
-      convId = created.id;
+    const existing = unwrap<Conversation[]>(
+      await supabase
+        .from('conversations')
+        .select('*')
+        .eq('customerId', customerId)
+        .eq('channel', 'whatsapp')
+        .eq('status', 'active')
+        .limit(1),
+    );
+    if (existing.length > 0) {
+      convId = existing[0].id;
     } else {
-      convId = conv.id;
+      const created = unwrap<Conversation>(
+        await supabase
+          .from('conversations')
+          .insert({
+            id: Id.conversation(),
+            customerId,
+            channel: 'whatsapp',
+            source: 'meta',
+            status: 'active',
+            startedAt: new Date().toISOString(),
+          })
+          .select()
+          .single(),
+      );
+      convId = created.id;
     }
   }
 
@@ -44,23 +56,18 @@ async function processWhatsAppJob(data: WhatsAppJobData): Promise<void> {
       const msg = messageBuilder.quotationReady(Number(quotationCount));
       await whatsAppService.sendMessage(convId, customerId, phoneNumber, msg);
 
-      // Send individual quotation documents
+      // Send a comparison list of the generated quotations
       const req = await quotationRequestService.findById(quotationRequestId);
-      if (req) {
-        for (const q of req.quotations) {
-          for (const doc of q.documents) {
-            if (doc.storageUrl && doc.status === 'ready') {
-              await whatsAppService.sendDocument(
-                convId,
-                customerId,
-                phoneNumber,
-                doc.storageUrl,
-                doc.fileName,
-                `${q.insurerName} — ${q.planName} — ₹${q.premium.toNumber().toLocaleString('en-IN')}/yr`,
-              );
-            }
-          }
-        }
+      if (req?.quotations && req.quotations.length > 0) {
+        const comparison = messageBuilder.quotationComparison(
+          req.quotations.map((q) => ({
+            id: q.id,
+            title: q.planName,
+            premium: q.premium,
+            insurer: q.insurerName,
+          })),
+        );
+        await whatsAppService.sendMessage(convId, customerId, phoneNumber, comparison);
       }
 
       break;

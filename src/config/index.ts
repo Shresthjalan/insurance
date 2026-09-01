@@ -3,7 +3,7 @@ import path from 'path';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
-function require(key: string): string {
+function requireEnv(key: string): string {
   const value = process.env[key];
   if (!value) throw new Error(`Missing required env var: ${key}`);
   return value;
@@ -26,8 +26,9 @@ export const config = {
     requestTimeoutMs: optionalInt('REQUEST_TIMEOUT_MS', 30000),
     isDev: optional('NODE_ENV', 'development') === 'development',
   },
-  db: {
-    url: require('DATABASE_URL'),
+  supabase: {
+    url: requireEnv('SUPABASE_URL'),
+    serviceRoleKey: requireEnv('SUPABASE_SERVICE_ROLE_KEY'),
   },
   redis: {
     host: optional('REDIS_HOST', 'localhost'),
@@ -48,14 +49,6 @@ export const config = {
     apiBaseUrl: optional('WHATSAPP_API_BASE_URL', 'https://graph.facebook.com'),
     sessionTtlHours: optionalInt('WHATSAPP_SESSION_TTL_HOURS', 24),
   },
-  storage: {
-    provider: optional('STORAGE_PROVIDER', 's3'),
-    bucket: optional('STORAGE_BUCKET', 'insurance-documents'),
-    region: optional('STORAGE_REGION', 'ap-south-1'),
-    accessKeyId: optional('AWS_ACCESS_KEY_ID'),
-    secretAccessKey: optional('AWS_SECRET_ACCESS_KEY'),
-    endpoint: optional('STORAGE_ENDPOINT') || undefined,
-  },
   providers: {
     a: {
       apiUrl: optional('PROVIDER_A_API_URL'),
@@ -72,7 +65,6 @@ export const config = {
   },
   workers: {
     quotationConcurrency: optionalInt('QUOTATION_WORKER_CONCURRENCY', 5),
-    documentConcurrency: optionalInt('DOCUMENT_WORKER_CONCURRENCY', 3),
     whatsappConcurrency: optionalInt('WHATSAPP_WORKER_CONCURRENCY', 10),
     notificationConcurrency: optionalInt('NOTIFICATION_WORKER_CONCURRENCY', 5),
   },

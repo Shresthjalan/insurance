@@ -16,9 +16,9 @@ import { TermQuotationService } from '../../services/quotation/TermQuotationServ
 import { LifeQuotationService } from '../../services/quotation/LifeQuotationService';
 import { ProviderAAdapter } from '../../providers/quotation/ProviderAAdapter';
 import { ProviderBAdapter } from '../../providers/quotation/ProviderBAdapter';
-import { prisma } from '../../db';
+import { supabase, unwrap } from '../../db';
 import { logger } from '../../utils/logger';
-import type { WhatsAppInboundMessage, WhatsAppStatusUpdate, InsuranceType } from '../../types';
+import type { WhatsAppInboundMessage, WhatsAppStatusUpdate, InsuranceType, Customer, QuotationRequest } from '../../types';
 
 const providers = [new ProviderAAdapter(), new ProviderBAdapter()];
 const carService = new CarQuotationService(providers);
@@ -255,7 +255,9 @@ async function handleConfirmation(
   // Build normalized payload from conversation context
   const normalizedPayload = buildNormalizedPayloadFromContext(insuranceType, ctx);
 
-  const customer = await prisma.customer.findUnique({ where: { id: customerId } });
+  const customer = unwrap<Customer | null>(
+    await supabase.from('customers').select('*').eq('id', customerId).maybeSingle(),
+  );
   if (!customer) return;
 
   const lead = await leadService.findOrCreate({ customerId, source: 'whatsapp', primaryInsuranceType: insuranceType });
@@ -370,34 +372,39 @@ async function resendCurrentUi(conversationId: string, customerId: string, phone
   });
 }
 
+async function findLatestQuotationRequest(customerId: string): Promise<QuotationRequest | null> {
+  const results = unwrap<QuotationRequest[]>(
+    await supabase
+      .from('quotation_requests')
+      .select('*, quotations(*)')
+      .eq('customerId', customerId)
+      .in('status', ['generated', 'partially_generated'])
+      .order('createdAt', { ascending: false })
+      .limit(1),
+  );
+  return results[0] ?? null;
+}
+
 async function sendQuotationDetails(conversationId: string, customerId: string, phoneNumber: string): Promise<void> {
-  const latest = await prisma.quotationRequest.findFirst({
-    where: { customerId, status: { in: ['generated', 'partially_generated'] } },
-    include: { quotations: true },
-    orderBy: { createdAt: 'desc' },
-  });
+  const latest = await findLatestQuotationRequest(customerId);
   if (!latest) {
     await whatsAppService.sendText(conversationId, customerId, phoneNumber, 'No quotes found yet. Please request a quotation first.');
     return;
   }
 
-  for (const q of latest.quotations) {
+  for (const q of latest.quotations ?? []) {
     await whatsAppService.sendText(
       conversationId,
       customerId,
       phoneNumber,
-      `*${q.insurerName}* — ${q.planName}\nPremium: ₹${q.premium.toNumber().toLocaleString('en-IN')}/year`,
+      `*${q.insurerName}* — ${q.planName}\nPremium: ₹${q.premium.toLocaleString('en-IN')}/year`,
     );
   }
 }
 
 async function sendQuotationComparison(conversationId: string, customerId: string, phoneNumber: string): Promise<void> {
-  const latest = await prisma.quotationRequest.findFirst({
-    where: { customerId, status: { in: ['generated', 'partially_generated'] } },
-    include: { quotations: true },
-    orderBy: { createdAt: 'desc' },
-  });
-  if (!latest || latest.quotations.length === 0) {
+  const latest = await findLatestQuotationRequest(customerId);
+  if (!latest || !latest.quotations || latest.quotations.length === 0) {
     await whatsAppService.sendText(conversationId, customerId, phoneNumber, 'No quotes available for comparison.');
     return;
   }
@@ -406,7 +413,7 @@ async function sendQuotationComparison(conversationId: string, customerId: strin
     latest.quotations.map((q) => ({
       id: q.id,
       title: q.planName,
-      premium: q.premium.toNumber(),
+      premium: q.premium,
       insurer: q.insurerName,
     })),
   );

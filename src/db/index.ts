@@ -1,36 +1,39 @@
-import { PrismaClient } from '@prisma/client';
+import { createClient } from '@supabase/supabase-js';
+import { config } from '../config';
+import { AppError } from '../utils/errors';
 import { logger } from '../utils/logger';
 
-const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
-
-export const prisma =
-  globalForPrisma.prisma ??
-  new PrismaClient({
-    log: [
-      { emit: 'event', level: 'query' },
-      { emit: 'event', level: 'error' },
-      { emit: 'event', level: 'warn' },
-    ],
-  });
-
-prisma.$on('error', (e) => {
-  logger.error('Prisma error', { message: e.message, target: e.target });
+export const supabase = createClient(config.supabase.url, config.supabase.serviceRoleKey, {
+  auth: { persistSession: false },
 });
 
-prisma.$on('warn', (e) => {
-  logger.warn('Prisma warning', { message: e.message, target: e.target });
-});
+interface PostgrestResult<T> {
+  data: T | null;
+  error: { message: string } | null;
+}
 
-if (process.env.NODE_ENV === 'development') {
-  globalForPrisma.prisma = prisma;
+/** Throws AppError on a Supabase/PostgREST error, otherwise returns the data. */
+export function unwrap<T>(result: PostgrestResult<T>): T {
+  if (result.error) {
+    throw new AppError('DATABASE_ERROR', result.error.message, 500);
+  }
+  return result.data as T;
+}
+
+interface PostgrestListResult<T> extends PostgrestResult<T> {
+  count: number | null;
+}
+
+/** Same as unwrap, but also returns the `count` from a `{ count: 'exact' }` select. */
+export function unwrapList<T>(result: PostgrestListResult<T[]>): { items: T[]; total: number } {
+  return { items: unwrap(result), total: result.count ?? 0 };
 }
 
 export async function connectDb(): Promise<void> {
-  await prisma.$connect();
+  unwrap(await supabase.from('customers').select('id').limit(1));
   logger.info('Database connected');
 }
 
 export async function disconnectDb(): Promise<void> {
-  await prisma.$disconnect();
   logger.info('Database disconnected');
 }

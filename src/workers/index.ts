@@ -1,6 +1,5 @@
 import 'dotenv/config';
 import { createQuotationWorker } from './quotationWorker';
-import { createDocumentWorker } from './documentWorker';
 import { createWhatsAppWorker } from './whatsappWorker';
 import { createNotificationWorker } from './notificationWorker';
 import { connectDb, disconnectDb } from '../db';
@@ -11,7 +10,6 @@ async function start() {
 
   const workers = [
     createQuotationWorker(),
-    createDocumentWorker(),
     createWhatsAppWorker(),
     createNotificationWorker(),
   ];

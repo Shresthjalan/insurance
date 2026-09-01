@@ -5,6 +5,7 @@ import { leadRoutes } from './leads';
 import { quotationRoutes } from './quotations';
 import { conversationRoutes } from './conversations';
 import { appointmentRoutes } from './appointments';
+import { insurancePolicyRoutes } from './insurancePolicies';
 
 const router = Router();
 
@@ -17,6 +18,7 @@ router.use('/leads', leadRoutes);
 router.use('/quotations', quotationRoutes);
 router.use('/conversations', conversationRoutes);
 router.use('/appointments', appointmentRoutes);
+router.use('/insurance-policies', insurancePolicyRoutes);
 
 // Health check
 router.get('/health', (_req, res) => {
