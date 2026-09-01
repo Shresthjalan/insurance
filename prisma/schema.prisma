@@ -1,0 +1,432 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ─────────────────────────────────────────────
+// CUSTOMERS
+// ─────────────────────────────────────────────
+
+model Customer {
+  id                    String    @id @default(cuid())
+  phoneNumber           String
+  normalizedPhoneNumber String    @unique
+  name                  String?
+  preferredLanguage     String?
+  countryCode           String?
+  status                String    @default("active")
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  lastContactAt         DateTime?
+
+  leads               Lead[]
+  conversations       Conversation[]
+  quotationRequests   QuotationRequest[]
+  advisorAppointments AdvisorAppointment[]
+  insuranceInterests  InsuranceInterest[]
+  messages            Message[]
+
+  @@map("customers")
+}
+
+// ─────────────────────────────────────────────
+// ADVISORS
+// ─────────────────────────────────────────────
+
+model Advisor {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String?
+  email     String?
+  status    String   @default("active")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  leads               Lead[]
+  advisorAppointments AdvisorAppointment[]
+
+  @@map("advisors")
+}
+
+// ─────────────────────────────────────────────
+// LEADS
+// ─────────────────────────────────────────────
+
+model Lead {
+  id                   String    @id @default(cuid())
+  customerId           String
+  source               String
+  status               String    @default("new")
+  primaryInsuranceType String?
+  assignedAdvisorId    String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  customer            Customer   @relation(fields: [customerId], references: [id])
+  assignedAdvisor     Advisor?   @relation(fields: [assignedAdvisorId], references: [id])
+  insuranceInterests  InsuranceInterest[]
+  quotationRequests   QuotationRequest[]
+  advisorAppointments AdvisorAppointment[]
+
+  @@index([customerId])
+  @@map("leads")
+}
+
+// ─────────────────────────────────────────────
+// INSURANCE INTERESTS
+// ─────────────────────────────────────────────
+
+model InsuranceInterest {
+  id             String   @id @default(cuid())
+  leadId         String
+  customerId     String
+  insuranceType  String
+  source         String
+  conversationId String?
+  status         String   @default("active")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  lead                Lead         @relation(fields: [leadId], references: [id])
+  customer            Customer     @relation(fields: [customerId], references: [id])
+  conversation        Conversation? @relation(fields: [conversationId], references: [id])
+  quotationRequests   QuotationRequest[]
+  advisorAppointments AdvisorAppointment[]
+
+  @@index([customerId])
+  @@index([insuranceType])
+  @@map("insurance_interests")
+}
+
+// ─────────────────────────────────────────────
+// CONVERSATIONS
+// ─────────────────────────────────────────────
+
+model Conversation {
+  id                String    @id @default(cuid())
+  customerId        String
+  channel           String
+  source            String
+  status            String    @default("active")
+  language          String?
+  currentFlow       String?
+  currentState      String?
+  expectedInputType String?
+  expectedInputIds  Json?
+  contextJson       Json?
+  lastUiMessageId   String?
+  lastMessageAt     DateTime?
+  startedAt         DateTime  @default(now())
+  endedAt           DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  customer            Customer            @relation(fields: [customerId], references: [id])
+  steps               ConversationStep[]
+  events              ConversationEvent[]
+  messages            Message[]
+  insuranceInterests  InsuranceInterest[]
+  quotationRequests   QuotationRequest[]
+  advisorAppointments AdvisorAppointment[]
+  whatsappSession     WhatsappSession?
+
+  @@index([customerId])
+  @@index([status])
+  @@map("conversations")
+}
+
+// ─────────────────────────────────────────────
+// CONVERSATION STEPS
+// ─────────────────────────────────────────────
+
+model ConversationStep {
+  id               String    @id @default(cuid())
+  conversationId   String
+  flowName         String
+  flowVersion      Int       @default(1)
+  stepKey          String
+  stepType         String
+  status           String    @default("pending")
+  questionPayload  Json?
+  expectedInput    Json?
+  answerValue      String?
+  answerNormalized Json?
+  startedAt        DateTime?
+  answeredAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  conversation Conversation @relation(fields: [conversationId], references: [id])
+
+  @@index([conversationId])
+  @@map("conversation_steps")
+}
+
+// ─────────────────────────────────────────────
+// CONVERSATION EVENTS
+// ─────────────────────────────────────────────
+
+model ConversationEvent {
+  id             String   @id @default(cuid())
+  conversationId String
+  customerId     String
+  eventType      String
+  eventData      Json?
+  source         String?
+  createdAt      DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id])
+
+  @@index([conversationId])
+  @@map("conversation_events")
+}
+
+// ─────────────────────────────────────────────
+// MESSAGES
+// ─────────────────────────────────────────────
+
+model Message {
+  id                  String    @id @default(cuid())
+  conversationId      String
+  customerId          String
+  channel             String
+  direction           String
+  messageType         String
+  textBody            String?
+  mediaUrl            String?
+  documentId          String?
+  providerMessageId   String?   @unique
+  providerStatus      String?
+  replyToMessageId    String?
+  interactiveType     String?
+  interactiveId       String?
+  rawPayloadReference String?
+  sentAt              DateTime?
+  deliveredAt         DateTime?
+  readAt              DateTime?
+  createdAt           DateTime  @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id])
+  customer     Customer     @relation(fields: [customerId], references: [id])
+
+  @@index([conversationId])
+  @@map("messages")
+}
+
+// ─────────────────────────────────────────────
+// QUOTATION REQUESTS
+// ─────────────────────────────────────────────
+
+model QuotationRequest {
+  id                  String    @id @default(cuid())
+  customerId          String
+  leadId              String?
+  insuranceInterestId String?
+  conversationId      String?
+  insuranceType       String
+  rawPayload          Json
+  normalizedPayload   Json
+  status              String    @default("received")
+  provider            String?
+  providerRequestId   String?
+  errorCode           String?
+  errorMessage        String?
+  requestedAt         DateTime  @default(now())
+  processingStartedAt DateTime?
+  completedAt         DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  customer          Customer           @relation(fields: [customerId], references: [id])
+  lead              Lead?              @relation(fields: [leadId], references: [id])
+  insuranceInterest InsuranceInterest? @relation(fields: [insuranceInterestId], references: [id])
+  conversation      Conversation?      @relation(fields: [conversationId], references: [id])
+  quotations        Quotation[]
+
+  @@index([customerId])
+  @@index([status])
+  @@index([insuranceType])
+  @@map("quotation_requests")
+}
+
+// ─────────────────────────────────────────────
+// QUOTATIONS
+// ─────────────────────────────────────────────
+
+model Quotation {
+  id                 String    @id @default(cuid())
+  quotationRequestId String
+  customerId         String
+  insuranceType      String
+  provider           String
+  providerQuoteId    String?
+  insurerName        String
+  planName           String
+  premium            Decimal   @db.Decimal(12, 2)
+  sumAssured         Decimal?  @db.Decimal(12, 2)
+  policyTerm         Int?
+  status             String    @default("active")
+  validUntil         DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  quotationRequest QuotationRequest @relation(fields: [quotationRequestId], references: [id])
+  documents        Document[]
+
+  @@index([customerId])
+  @@index([quotationRequestId])
+  @@map("quotations")
+}
+
+// ─────────────────────────────────────────────
+// DOCUMENTS
+// ─────────────────────────────────────────────
+
+model Document {
+  id              String   @id @default(cuid())
+  quotationId     String?
+  customerId      String
+  documentType    String
+  fileName        String
+  mimeType        String
+  storageProvider String
+  storageKey      String
+  storageUrl      String?
+  status          String   @default("pending")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  quotation Quotation? @relation(fields: [quotationId], references: [id])
+
+  @@index([customerId])
+  @@map("documents")
+}
+
+// ─────────────────────────────────────────────
+// ADVISOR APPOINTMENTS
+// ─────────────────────────────────────────────
+
+model AdvisorAppointment {
+  id                  String    @id @default(cuid())
+  customerId          String
+  leadId              String?
+  insuranceInterestId String?
+  conversationId      String?
+  advisorId           String?
+  requestedDate       String
+  requestedTime       String
+  timezone            String
+  status              String    @default("requested")
+  source              String
+  notes               String?
+  confirmedAt         DateTime?
+  assignedAt          DateTime?
+  completedAt         DateTime?
+  cancelledAt         DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  customer          Customer           @relation(fields: [customerId], references: [id])
+  lead              Lead?              @relation(fields: [leadId], references: [id])
+  insuranceInterest InsuranceInterest? @relation(fields: [insuranceInterestId], references: [id])
+  conversation      Conversation?      @relation(fields: [conversationId], references: [id])
+  advisor           Advisor?           @relation(fields: [advisorId], references: [id])
+
+  @@index([customerId])
+  @@index([requestedDate])
+  @@index([status])
+  @@map("advisor_appointments")
+}
+
+// ─────────────────────────────────────────────
+// WEBHOOK EVENTS
+// ─────────────────────────────────────────────
+
+model WebhookEvent {
+  id               String    @id @default(cuid())
+  provider         String
+  eventType        String
+  externalEventId  String?
+  requestId        String?
+  idempotencyKey   String?   @unique
+  payloadHash      String?
+  payload          Json
+  processingStatus String    @default("received")
+  attemptCount     Int       @default(0)
+  errorCode        String?
+  errorMessage     String?
+  receivedAt       DateTime  @default(now())
+  processedAt      DateTime?
+  createdAt        DateTime  @default(now())
+
+  @@index([externalEventId])
+  @@index([requestId])
+  @@map("webhook_events")
+}
+
+// ─────────────────────────────────────────────
+// WHATSAPP SESSIONS
+// ─────────────────────────────────────────────
+
+model WhatsappSession {
+  id                       String    @id @default(cuid())
+  customerId               String
+  conversationId           String    @unique
+  phoneNumber              String
+  state                    String?
+  lastInteractiveMessageId String?
+  expiresAt                DateTime?
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+
+  conversation Conversation @relation(fields: [conversationId], references: [id])
+
+  @@map("whatsapp_sessions")
+}
+
+// ─────────────────────────────────────────────
+// FLOW DEFINITIONS
+// ─────────────────────────────────────────────
+
+model FlowDefinition {
+  id        String   @id @default(cuid())
+  flowName  String
+  version   Int
+  steps     Json
+  rules     Json?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([flowName, version])
+  @@map("flow_definitions")
+}
+
+// ─────────────────────────────────────────────
+// OUTBOUND MESSAGE JOBS
+// ─────────────────────────────────────────────
+
+model OutboundMessageJob {
+  id             String    @id @default(cuid())
+  conversationId String
+  customerId     String
+  channel        String
+  messageType    String
+  payload        Json
+  status         String    @default("pending")
+  attemptCount   Int       @default(0)
+  errorMessage   String?
+  scheduledAt    DateTime?
+  processedAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([status])
+  @@index([customerId])
+  @@map("outbound_message_jobs")
+}
