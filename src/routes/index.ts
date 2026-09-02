@@ -6,6 +6,8 @@ import { quotationRoutes } from './quotations';
 import { conversationRoutes } from './conversations';
 import { appointmentRoutes } from './appointments';
 import { insurancePolicyRoutes } from './insurancePolicies';
+import { dashboardRoutes } from './dashboard';
+import { sseRoutes } from './sse';
 
 const router = Router();
 
@@ -19,6 +21,10 @@ router.use('/quotations', quotationRoutes);
 router.use('/conversations', conversationRoutes);
 router.use('/appointments', appointmentRoutes);
 router.use('/insurance-policies', insurancePolicyRoutes);
+
+// Dashboard data + real-time SSE feed
+router.use('/dashboard', dashboardRoutes);
+router.use('/sse', sseRoutes);
 
 // Health check
 router.get('/health', (_req, res) => {

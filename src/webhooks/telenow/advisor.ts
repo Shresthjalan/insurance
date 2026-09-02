@@ -3,6 +3,7 @@ import { customerService } from '../../services/CustomerService';
 import { leadService } from '../../services/LeadService';
 import { insuranceInterestService } from '../../services/InsuranceInterestService';
 import { advisorService } from '../../services/AdvisorService';
+import { dashboardBus } from '../../events/DashboardEventBus';
 import { supabase, unwrap } from '../../db';
 import { Id } from '../../utils/idGenerator';
 import { ValidationError } from '../../utils/errors';
@@ -111,6 +112,17 @@ export async function handleTelenowAdvisor(
     });
 
     await leadService.updateStatus(lead.id, 'advisor_requested');
+
+    dashboardBus.publish('appointment_scheduled', {
+      customerId: customer.id,
+      phone: data.phone_number,
+      name: data.customer_name,
+      insuranceType: data.insurance_type,
+      appointmentId: appointment.id,
+      requestedDate: data.meeting_date,
+      requestedTime: data.meeting_time,
+      source: 'telenow',
+    });
 
     await supabase
       .from('webhook_events')

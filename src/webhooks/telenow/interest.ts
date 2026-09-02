@@ -3,6 +3,7 @@ import { customerService } from '../../services/CustomerService';
 import { leadService } from '../../services/LeadService';
 import { insuranceInterestService } from '../../services/InsuranceInterestService';
 import { eventService } from '../../services/EventService';
+import { dashboardBus } from '../../events/DashboardEventBus';
 import { supabase, unwrap } from '../../db';
 import { Id } from '../../utils/idGenerator';
 import { ValidationError } from '../../utils/errors';
@@ -118,6 +119,15 @@ export async function handleTelenowInterest(
       .from('webhook_events')
       .update({ processingStatus: 'processed', processedAt: new Date().toISOString() })
       .eq('id', webhookEvent.id);
+
+    dashboardBus.publish('new_interest', {
+      customerId: customer.id,
+      phone: phone_number,
+      name: customer_name,
+      insuranceType: insurance_type,
+      source: 'telenow',
+      leadId: lead.id,
+    });
 
     logger.info('Telenow interest processed', {
       request_id: requestId,

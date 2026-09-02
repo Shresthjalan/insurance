@@ -10,6 +10,7 @@ import { ProviderBAdapter } from '../providers/quotation/ProviderBAdapter';
 import { leadService } from '../services/LeadService';
 import { customerService } from '../services/CustomerService';
 import { generateAllQuotationPdfs } from '../services/pdf/QuotationPdfGenerator';
+import { dashboardBus } from '../events/DashboardEventBus';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 import { isTransientError } from '../utils/errors';
@@ -91,6 +92,14 @@ async function processQuotation(data: QuotationJobData): Promise<void> {
   // Generate a PDF for each saved quotation
   const pdfs = await generateAllQuotationPdfs(saved, normalizedPayload);
   logger.info('PDFs generated', { request_id: quotationRequestId, count: pdfs.length });
+
+  dashboardBus.publish('quotation_generated', {
+    customerId,
+    insuranceType,
+    quotationRequestId,
+    count: saved.length,
+    pdfCount: pdfs.length,
+  });
 
   // Notify the customer over WhatsApp
   const customer = await customerService.findById(customerId);
