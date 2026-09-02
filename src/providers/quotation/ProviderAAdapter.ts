@@ -19,7 +19,75 @@ export class ProviderAAdapter implements QuotationProvider {
     });
   }
 
+  private stubQuotes(req: QuotationProviderRequest): QuoteResult[] {
+    const validity = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const stubs: Record<string, QuoteResult[]> = {
+      car: [
+        {
+          providerQuoteId: 'PA-CAR-001',
+          insurerName: 'Acme General Insurance',
+          planName: 'Comprehensive Cover',
+          premium: 12500,
+          sumAssured: 800000,
+          policyTerm: 1,
+          validUntil: validity,
+          rawResponse: { _provider: this.name, _stub: true },
+        },
+        {
+          providerQuoteId: 'PA-CAR-002',
+          insurerName: 'Acme General Insurance',
+          planName: 'Third-Party Only',
+          premium: 4200,
+          sumAssured: 500000,
+          policyTerm: 1,
+          validUntil: validity,
+          rawResponse: { _provider: this.name, _stub: true },
+        },
+      ],
+      health: [
+        {
+          providerQuoteId: 'PA-HLTH-001',
+          insurerName: 'Acme Health Ltd',
+          planName: 'Silver Health Shield',
+          premium: 9800,
+          sumAssured: 300000,
+          policyTerm: 1,
+          validUntil: validity,
+          rawResponse: { _provider: this.name, _stub: true },
+        },
+        {
+          providerQuoteId: 'PA-HLTH-002',
+          insurerName: 'Acme Health Ltd',
+          planName: 'Gold Health Shield',
+          premium: 18500,
+          sumAssured: 500000,
+          policyTerm: 1,
+          validUntil: validity,
+          rawResponse: { _provider: this.name, _stub: true },
+        },
+      ],
+      term: [
+        {
+          providerQuoteId: 'PA-TERM-001',
+          insurerName: 'Acme Life Insurance',
+          planName: 'Pure Term Protect',
+          premium: 7200,
+          sumAssured: 5000000,
+          policyTerm: 20,
+          validUntil: validity,
+          rawResponse: { _provider: this.name, _stub: true },
+        },
+      ],
+    };
+    return stubs[req.insuranceType] ?? [];
+  }
+
   async generateQuote(req: QuotationProviderRequest): Promise<QuoteResult[]> {
+    if (!config.providers.a.apiKey) {
+      logger.warn('Provider A: no API key configured, returning stub quotes', { requestId: req.requestId });
+      return this.stubQuotes(req);
+    }
+
     try {
       const { data } = await this.http.post('/quotes', {
         insurance_type: req.insuranceType,
@@ -46,6 +114,7 @@ export class ProviderAAdapter implements QuotationProvider {
   }
 
   async isHealthy(): Promise<boolean> {
+    if (!config.providers.a.apiKey) return true;
     try {
       await this.http.get('/health');
       return true;
