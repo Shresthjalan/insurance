@@ -33,7 +33,7 @@ export const config = {
   },
   redis: {
     host: optional('REDIS_HOST', 'localhost'),
-    port: optionalInt('REDIS_PORT', 6379),
+    port: optionalInt('REDIS_PORT', 6380),
     password: optional('REDIS_PASSWORD') || undefined,
     db: optionalInt('REDIS_DB', 0),
   },
