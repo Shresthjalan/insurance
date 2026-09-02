@@ -21,11 +21,11 @@ function optionalInt(key: string, fallback: number): number {
 export const config = {
   app: {
     env: optional('NODE_ENV', 'development'),
-    port: optionalInt('PORT', 3000),
+    port: optionalInt('PORT', 5100),
     logLevel: optional('LOG_LEVEL', 'info'),
     requestTimeoutMs: optionalInt('REQUEST_TIMEOUT_MS', 30000),
     isDev: optional('NODE_ENV', 'development') === 'development',
-    publicBaseUrl: optional('PUBLIC_BASE_URL', 'http://localhost:3000'),
+    publicBaseUrl: optional('PUBLIC_BASE_URL', 'http://localhost:5100'),
   },
   supabase: {
     url: requireEnv('SUPABASE_URL'),

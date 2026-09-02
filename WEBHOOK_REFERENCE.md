@@ -9,7 +9,7 @@ Share this with whoever configures Telenow, Meta Developer Console, or any futur
 
 | Environment | Base URL |
 |-------------|----------|
-| Development | `http://localhost:3000` |
+| Development | `http://localhost:5100` |
 | Production  | `https://your-domain.com` (replace with your actual domain) |
 
 All endpoints are prefixed with `/api/v1`.
