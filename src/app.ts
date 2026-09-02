@@ -3,6 +3,7 @@ import helmet from 'helmet';
 import cors from 'cors';
 import morgan from 'morgan';
 import rateLimit from 'express-rate-limit';
+import path from 'path';
 import { requestId } from './middleware/requestId';
 import { errorHandler, notFound } from './middleware/errorHandler';
 import { apiRoutes } from './routes';
@@ -46,6 +47,11 @@ export function createApp() {
 
   // ── API routes
   app.use('/api/v1', apiRoutes);
+
+  // ── Static — generated PDF quotations
+  app.use('/pdfs', express.static(path.resolve(process.cwd(), 'uploads', 'pdfs'), {
+    setHeaders: (res) => { res.setHeader('Content-Type', 'application/pdf'); },
+  }));
 
   // ── 404
   app.use(notFound);

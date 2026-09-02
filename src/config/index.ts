@@ -25,6 +25,7 @@ export const config = {
     logLevel: optional('LOG_LEVEL', 'info'),
     requestTimeoutMs: optionalInt('REQUEST_TIMEOUT_MS', 30000),
     isDev: optional('NODE_ENV', 'development') === 'development',
+    publicBaseUrl: optional('PUBLIC_BASE_URL', 'http://localhost:3000'),
   },
   supabase: {
     url: requireEnv('SUPABASE_URL'),

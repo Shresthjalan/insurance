@@ -9,6 +9,7 @@ import { ProviderAAdapter } from '../providers/quotation/ProviderAAdapter';
 import { ProviderBAdapter } from '../providers/quotation/ProviderBAdapter';
 import { leadService } from '../services/LeadService';
 import { customerService } from '../services/CustomerService';
+import { generateAllQuotationPdfs } from '../services/pdf/QuotationPdfGenerator';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 import { isTransientError } from '../utils/errors';
@@ -87,10 +88,15 @@ async function processQuotation(data: QuotationJobData): Promise<void> {
     count: saved.length,
   });
 
-  // Notify the customer over WhatsApp now that quotes are ready
+  // Generate a PDF for each saved quotation
+  const pdfs = await generateAllQuotationPdfs(saved, normalizedPayload);
+  logger.info('PDFs generated', { request_id: quotationRequestId, count: pdfs.length });
+
+  // Notify the customer over WhatsApp
   const customer = await customerService.findById(customerId);
   if (customer?.normalizedPhoneNumber) {
-    await whatsappQueue.add('send_quotation_result', {
+    // Introductory message with quote count
+    await whatsappQueue.add('quotation_intro', {
       conversationId: request?.conversationId ?? null,
       customerId,
       phoneNumber: customer.normalizedPhoneNumber,
@@ -100,6 +106,22 @@ async function processQuotation(data: QuotationJobData): Promise<void> {
         quotationCount: saved.length,
       },
     });
+
+    // One document message per PDF
+    for (const pdf of pdfs) {
+      const pdfUrl = `${config.app.publicBaseUrl}/pdfs/${pdf.fileName}`;
+      await whatsappQueue.add('quotation_pdf', {
+        conversationId: request?.conversationId ?? null,
+        customerId,
+        phoneNumber: customer.normalizedPhoneNumber,
+        messageType: 'document',
+        payload: {
+          documentUrl: pdfUrl,
+          filename: pdf.fileName,
+          caption: `📄 ${pdf.insurerName} — ${insuranceType.toUpperCase()} Insurance Quote`,
+        },
+      });
+    }
   }
 }
 

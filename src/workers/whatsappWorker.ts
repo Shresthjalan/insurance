@@ -78,6 +78,18 @@ async function processWhatsAppJob(data: WhatsAppJobData): Promise<void> {
       break;
     }
 
+    case 'document': {
+      await whatsAppService.sendDocument(
+        convId,
+        customerId,
+        phoneNumber,
+        payload['documentUrl'] as string,
+        (payload['filename'] as string | undefined) ?? 'quotation.pdf',
+        payload['caption'] as string | undefined,
+      );
+      break;
+    }
+
     default:
       logger.warn('Unknown WhatsApp job message type', { messageType });
   }
