@@ -12,7 +12,21 @@ export type LeadStatus =
   | 'closed_lost'
 
 // ─── Source ──────────────────────────────────────────────────────────────────
-export type LeadSource = 'telenow' | 'whatsapp'
+export type LeadSource = 'telenow' | 'whatsapp' | 'manual'
+
+// ─── Policy ──────────────────────────────────────────────────────────────────
+export type PolicyStatus = 'active' | 'pending' | 'expired' | 'cancelled'
+
+export interface Policy {
+  id: string
+  insuranceType: InsuranceType
+  company: string
+  tenure: number
+  tenureUnit: 'months' | 'years'
+  premium: number
+  status: PolicyStatus
+  createdAt: string
+}
 
 // ─── Appointment status ───────────────────────────────────────────────────────
 export type AppointmentStatus =
@@ -64,6 +78,7 @@ export interface Customer {
   leadSource: LeadSource
   callCount: number
   interests: CustomerInterest[]
+  policies?: Policy[]
   upcomingAppointment?: UpcomingAppointment
   createdAt: string
   updatedAt: string
