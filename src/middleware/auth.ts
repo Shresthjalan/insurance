@@ -4,7 +4,11 @@ import { config } from '../config';
 import { AuthError } from '../utils/errors';
 
 export function telenowAuth(req: Request, _res: Response, next: NextFunction): void {
-  const apiKey = req.headers['x-api-key'] as string | undefined;
+  const rawAuth = (req.headers['authorization'] as string | undefined) ?? '';
+  const tokenFromAuth = rawAuth.replace(/^Bearer\s+/i, '').trim();
+  const apiKey = (req.headers['x-api-key'] as string | undefined) ||
+                 (req.headers['x-telenow-token'] as string | undefined) ||
+                 tokenFromAuth || undefined;
   const signature = req.headers['x-telenow-signature'] as string | undefined;
 
   if (!config.telenow.apiKey) {

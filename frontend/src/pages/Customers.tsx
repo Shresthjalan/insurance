@@ -9,19 +9,19 @@ import type {
 } from '../types'
 
 // ─── Badge helpers ────────────────────────────────────────────────────────────
-const INSURANCE_BADGE: Record<InsuranceType, string> = {
+const INSURANCE_BADGE: Record<string, string> = {
   car: 'bg-blue-100 text-blue-700',
   health: 'bg-green-100 text-green-700',
   term: 'bg-purple-100 text-purple-700',
   life: 'bg-orange-100 text-orange-700',
 }
 
-const SOURCE_BADGE: Record<LeadSource, string> = {
+const SOURCE_BADGE: Record<string, string> = {
   telenow: 'bg-indigo-100 text-indigo-700',
   whatsapp: 'bg-emerald-100 text-emerald-700',
 }
 
-const STATUS_BADGE: Record<LeadStatus, string> = {
+const STATUS_BADGE: Record<string, string> = {
   new: 'bg-blue-100 text-blue-700',
   contacted: 'bg-cyan-100 text-cyan-700',
   qualified: 'bg-teal-100 text-teal-700',
@@ -29,13 +29,17 @@ const STATUS_BADGE: Record<LeadStatus, string> = {
   negotiation: 'bg-amber-100 text-amber-700',
   closed_won: 'bg-green-100 text-green-700',
   closed_lost: 'bg-red-100 text-red-700',
+  quotation_requested: 'bg-purple-100 text-purple-700',
+  advisor_requested: 'bg-amber-100 text-amber-700',
 }
 
-function InsuranceBadge({ type }: { type: InsuranceType }) {
+function InsuranceBadge({ type }: { type?: InsuranceType | string | null }) {
+  if (!type) return null
+  const key = String(type).toLowerCase()
   return (
     <span
       className={`inline-block text-xs font-medium px-2 py-0.5 rounded-full capitalize ${
-        INSURANCE_BADGE[type] ?? 'bg-slate-100 text-slate-600'
+        INSURANCE_BADGE[key] ?? 'bg-slate-100 text-slate-600'
       }`}
     >
       {type}
@@ -43,11 +47,19 @@ function InsuranceBadge({ type }: { type: InsuranceType }) {
   )
 }
 
-function SourceBadge({ source }: { source: LeadSource }) {
+function SourceBadge({ source }: { source?: LeadSource | string | null }) {
+  if (!source) {
+    return (
+      <span className="inline-block text-xs font-medium px-2 py-0.5 rounded-full capitalize bg-slate-100 text-slate-600">
+        direct
+      </span>
+    )
+  }
+  const key = String(source).toLowerCase()
   return (
     <span
       className={`inline-block text-xs font-medium px-2 py-0.5 rounded-full capitalize ${
-        SOURCE_BADGE[source] ?? 'bg-slate-100 text-slate-600'
+        SOURCE_BADGE[key] ?? 'bg-slate-100 text-slate-600'
       }`}
     >
       {source}
@@ -55,12 +67,21 @@ function SourceBadge({ source }: { source: LeadSource }) {
   )
 }
 
-function StatusBadge({ status }: { status: LeadStatus }) {
-  const label = status.replace(/_/g, ' ')
+function StatusBadge({ status }: { status?: LeadStatus | string | null }) {
+  if (!status) {
+    return (
+      <span className="inline-block text-xs font-medium px-2 py-0.5 rounded-full capitalize bg-slate-100 text-slate-600">
+        new
+      </span>
+    )
+  }
+  const str = String(status)
+  const label = str.replace(/_/g, ' ')
+  const key = str.toLowerCase()
   return (
     <span
       className={`inline-block text-xs font-medium px-2 py-0.5 rounded-full capitalize ${
-        STATUS_BADGE[status] ?? 'bg-slate-100 text-slate-600'
+        STATUS_BADGE[key] ?? 'bg-slate-100 text-slate-600'
       }`}
     >
       {label}
@@ -68,13 +89,19 @@ function StatusBadge({ status }: { status: LeadStatus }) {
   )
 }
 
-function formatDate(iso: string | undefined): string {
+function formatDate(iso: string | undefined | null): string {
   if (!iso) return '—'
-  return new Date(iso).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  })
+  try {
+    const d = new Date(iso)
+    if (isNaN(d.getTime())) return '—'
+    return d.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    })
+  } catch {
+    return '—'
+  }
 }
 
 // ─── Customer detail drawer ───────────────────────────────────────────────────
@@ -85,6 +112,13 @@ interface DrawerProps {
 
 function CustomerDrawer({ customer, onClose }: DrawerProps) {
   if (!customer) return null
+
+  const phone = customer.phone || (customer as any).phoneNumber || (customer as any).normalizedPhoneNumber || '—'
+  const name = customer.name || (phone !== '—' ? phone : 'Unnamed Customer')
+  const rawInterests = Array.isArray(customer.interests) ? customer.interests : []
+  const interestList = rawInterests.map((item: any) =>
+    typeof item === 'string' ? item : item?.insuranceType
+  ).filter(Boolean)
 
   return (
     <>
@@ -98,8 +132,8 @@ function CustomerDrawer({ customer, onClose }: DrawerProps) {
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-slate-200">
           <div>
-            <h2 className="text-lg font-semibold text-slate-800">{customer.name}</h2>
-            <p className="text-sm text-slate-500 mt-0.5">{customer.phone}</p>
+            <h2 className="text-lg font-semibold text-slate-800">{name}</h2>
+            <p className="text-sm text-slate-500 mt-0.5">{phone}</p>
           </div>
           <button
             onClick={onClose}
@@ -132,7 +166,7 @@ function CustomerDrawer({ customer, onClose }: DrawerProps) {
             </div>
             <div>
               <p className="text-xs text-slate-400 uppercase tracking-wide mb-1">Calls</p>
-              <p className="text-slate-700 font-medium">{customer.callCount}</p>
+              <p className="text-slate-700 font-medium">{customer.callCount ?? 0}</p>
             </div>
             <div>
               <p className="text-xs text-slate-400 uppercase tracking-wide mb-1">Created</p>
@@ -148,22 +182,23 @@ function CustomerDrawer({ customer, onClose }: DrawerProps) {
               <p className="text-xs text-slate-400 uppercase tracking-wide mb-1">
                 Last Contacted
               </p>
-              <p className="text-slate-700">{formatDate(customer.lastContactedAt)}</p>
+              <p className="text-slate-700">
+                {formatDate(customer.lastContactedAt || (customer as any).lastContactAt)}
+              </p>
             </div>
           </div>
 
           {/* Interests */}
-          {customer.interests.length > 0 && (
+          {interestList.length > 0 && (
             <div>
               <p className="text-xs text-slate-400 uppercase tracking-wide mb-2">Interests</p>
               <div className="space-y-2">
-                {customer.interests.map((interest) => (
+                {interestList.map((type: string, idx: number) => (
                   <div
-                    key={interest.id}
+                    key={`drawer-interest-${type}-${idx}`}
                     className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2"
                   >
-                    <InsuranceBadge type={interest.insuranceType} />
-                    <span className="text-xs text-slate-400">{formatDate(interest.createdAt)}</span>
+                    <InsuranceBadge type={type as InsuranceType} />
                   </div>
                 ))}
               </div>
@@ -186,17 +221,11 @@ function CustomerDrawer({ customer, onClose }: DrawerProps) {
                         : 'bg-amber-100 text-amber-700'
                     }`}
                   >
-                    {customer.upcomingAppointment.status}
+                    {customer.upcomingAppointment.status ?? 'requested'}
                   </span>
                 </div>
                 <p className="text-slate-700 font-medium">
-                  {new Date(customer.upcomingAppointment.scheduledAt).toLocaleString('en-US', {
-                    weekday: 'short',
-                    month: 'short',
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
+                  {formatDate(customer.upcomingAppointment.scheduledAt)}
                 </p>
                 {customer.upcomingAppointment.advisorName && (
                   <p className="text-slate-500">
@@ -391,65 +420,75 @@ export function Customers() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {customers.map((customer) => (
-                  <tr
-                    key={customer.id}
-                    onClick={() => setSelectedCustomer(customer)}
-                    className="hover:bg-slate-50 cursor-pointer transition-colors"
-                  >
-                    <td className="px-4 py-3">
-                      <p className="font-medium text-slate-800">{customer.name}</p>
-                      <p className="text-xs text-slate-400 mt-0.5">{customer.phone}</p>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-1">
-                        {customer.interests.slice(0, 3).map((i) => (
-                          <InsuranceBadge key={i.id} type={i.insuranceType} />
-                        ))}
-                        {customer.interests.length > 3 && (
-                          <span className="text-xs text-slate-400 self-center">
-                            +{customer.interests.length - 3}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <SourceBadge source={customer.leadSource} />
-                    </td>
-                    <td className="px-4 py-3">
-                      <StatusBadge status={customer.leadStatus} />
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <span className="text-slate-700 font-medium">{customer.callCount}</span>
-                    </td>
-                    <td className="px-4 py-3 text-slate-500 whitespace-nowrap">
-                      {formatDate(customer.lastContactedAt)}
-                    </td>
-                    <td className="px-4 py-3">
-                      {customer.upcomingAppointment ? (
-                        <div>
-                          <p className="text-slate-700 text-xs font-medium whitespace-nowrap">
-                            {new Date(customer.upcomingAppointment.scheduledAt).toLocaleDateString(
-                              'en-US',
-                              { month: 'short', day: 'numeric' },
-                            )}
-                          </p>
-                          <span
-                            className={`text-xs font-medium px-1.5 py-0.5 rounded-full capitalize ${
-                              customer.upcomingAppointment.status === 'confirmed'
-                                ? 'bg-green-100 text-green-700'
-                                : 'bg-amber-100 text-amber-700'
-                            }`}
-                          >
-                            {customer.upcomingAppointment.status}
-                          </span>
+                {customers.map((customer) => {
+                  const phone = customer.phone || (customer as any).phoneNumber || (customer as any).normalizedPhoneNumber || '—'
+                  const name = customer.name || (phone !== '—' ? phone : 'Unnamed Customer')
+                  const rawInterests = Array.isArray(customer.interests) ? customer.interests : []
+                  const interestTypes = rawInterests.map((item: any) =>
+                    typeof item === 'string' ? item : item?.insuranceType
+                  ).filter(Boolean)
+                  const lastContact = formatDate(customer.lastContactedAt || (customer as any).lastContactAt || (customer as any).updatedAt)
+
+                  return (
+                    <tr
+                      key={customer.id}
+                      onClick={() => setSelectedCustomer(customer)}
+                      className="hover:bg-slate-50 cursor-pointer transition-colors"
+                    >
+                      <td className="px-4 py-3">
+                        <p className="font-medium text-slate-800">{name}</p>
+                        <p className="text-xs text-slate-400 mt-0.5">{phone}</p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap gap-1">
+                          {interestTypes.slice(0, 3).map((type: string, idx: number) => (
+                            <InsuranceBadge key={`table-interest-${customer.id}-${type}-${idx}`} type={type as InsuranceType} />
+                          ))}
+                          {interestTypes.length > 3 && (
+                            <span className="text-xs text-slate-400 self-center">
+                              +{interestTypes.length - 3}
+                            </span>
+                          )}
+                          {interestTypes.length === 0 && (
+                            <span className="text-xs text-slate-300">—</span>
+                          )}
                         </div>
-                      ) : (
-                        <span className="text-slate-300">—</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="px-4 py-3">
+                        <SourceBadge source={customer.leadSource} />
+                      </td>
+                      <td className="px-4 py-3">
+                        <StatusBadge status={customer.leadStatus} />
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <span className="text-slate-700 font-medium">{customer.callCount ?? 0}</span>
+                      </td>
+                      <td className="px-4 py-3 text-slate-500 whitespace-nowrap">
+                        {lastContact}
+                      </td>
+                      <td className="px-4 py-3">
+                        {customer.upcomingAppointment ? (
+                          <div>
+                            <p className="text-slate-700 text-xs font-medium whitespace-nowrap">
+                              {formatDate(customer.upcomingAppointment.scheduledAt)}
+                            </p>
+                            <span
+                              className={`text-xs font-medium px-1.5 py-0.5 rounded-full capitalize ${
+                                customer.upcomingAppointment.status === 'confirmed'
+                                  ? 'bg-green-100 text-green-700'
+                                  : 'bg-amber-100 text-amber-700'
+                              }`}
+                            >
+                              {customer.upcomingAppointment.status ?? 'requested'}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-slate-300">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>

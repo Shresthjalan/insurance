@@ -24,10 +24,12 @@ Every Telenow webhook call must include **one** of the following:
 
 | Method | Header | Value |
 |--------|--------|-------|
+| Bearer Token | `Authorization` | `Bearer <TELENOW_API_KEY>` (or raw `<TELENOW_API_KEY>`) |
 | API Key | `x-api-key` | value of `TELENOW_API_KEY` in your `.env` |
+| Telenow Token | `x-telenow-token` | value of `TELENOW_API_KEY` in your `.env` |
 | HMAC Signature | `x-telenow-signature` | `HMAC-SHA256(request body, TELENOW_WEBHOOK_SECRET)` |
 
-Set `TELENOW_API_KEY` in your `.env` and provide the same value to Telenow in their webhook settings.
+Set `TELENOW_API_KEY` in your `.env` and provide the token value to Telenow in their webhook settings.
 
 ### WhatsApp (Meta) → Backend
 

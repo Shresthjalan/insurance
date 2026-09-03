@@ -52,11 +52,14 @@ function validateAndNormalize(insuranceType: InsuranceType, details: unknown) {
   }
 }
 
+import { extractTelenowPayload } from '../../utils/telenowPayload';
+
 export async function handleTelenowQuotation(
   body: unknown,
   requestId: string,
 ): Promise<{ quotation_request_id: string; status: string }> {
-  const parsed = quotationSchema.safeParse(body);
+  const normalizedBody = extractTelenowPayload(body);
+  const parsed = quotationSchema.safeParse(normalizedBody);
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
     throw new ValidationError(issue.message, issue.path.join('.'));

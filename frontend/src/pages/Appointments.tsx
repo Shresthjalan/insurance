@@ -17,11 +17,19 @@ const INSURANCE_BADGE: Record<InsuranceType, string> = {
   life: 'bg-orange-100 text-orange-700',
 }
 
-function StatusBadge({ status }: { status: AppointmentStatus }) {
+function StatusBadge({ status }: { status?: AppointmentStatus | string | null }) {
+  if (!status) {
+    return (
+      <span className="inline-block text-xs font-medium px-2.5 py-0.5 rounded-full capitalize bg-slate-100 text-slate-600">
+        requested
+      </span>
+    )
+  }
+  const key = String(status).toLowerCase() as AppointmentStatus
   return (
     <span
       className={`inline-block text-xs font-medium px-2.5 py-0.5 rounded-full capitalize ${
-        STATUS_BADGE[status] ?? 'bg-slate-100 text-slate-600'
+        STATUS_BADGE[key] ?? 'bg-slate-100 text-slate-600'
       }`}
     >
       {status}
@@ -29,11 +37,13 @@ function StatusBadge({ status }: { status: AppointmentStatus }) {
   )
 }
 
-function InsuranceBadge({ type }: { type: InsuranceType }) {
+function InsuranceBadge({ type }: { type?: InsuranceType | string | null }) {
+  if (!type) return null
+  const key = String(type).toLowerCase() as InsuranceType
   return (
     <span
       className={`inline-block text-xs font-medium px-2.5 py-0.5 rounded-full capitalize ${
-        INSURANCE_BADGE[type] ?? 'bg-slate-100 text-slate-600'
+        INSURANCE_BADGE[key] ?? 'bg-slate-100 text-slate-600'
       }`}
     >
       {type}
@@ -41,11 +51,17 @@ function InsuranceBadge({ type }: { type: InsuranceType }) {
   )
 }
 
-function formatDateTime(iso: string): { date: string; time: string } {
-  const d = new Date(iso)
-  return {
-    date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-    time: d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+function formatDateTime(iso: string | undefined | null): { date: string; time: string } {
+  if (!iso) return { date: '—', time: '' }
+  try {
+    const d = new Date(iso)
+    if (isNaN(d.getTime())) return { date: '—', time: '' }
+    return {
+      date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      time: d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+    }
+  } catch {
+    return { date: '—', time: '' }
   }
 }
 

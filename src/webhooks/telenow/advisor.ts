@@ -22,11 +22,14 @@ const advisorSchema = z.object({
   external_event_id: z.string().optional(),
 });
 
+import { extractTelenowPayload } from '../../utils/telenowPayload';
+
 export async function handleTelenowAdvisor(
   body: unknown,
   requestId: string,
 ): Promise<{ appointment_id: string; status: string }> {
-  const parsed = advisorSchema.safeParse(body);
+  const normalizedBody = extractTelenowPayload(body);
+  const parsed = advisorSchema.safeParse(normalizedBody);
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
     throw new ValidationError(issue.message, issue.path.join('.'));

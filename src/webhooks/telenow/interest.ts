@@ -17,11 +17,14 @@ const interestSchema = z.object({
   external_event_id: z.string().optional(),
 });
 
+import { extractTelenowPayload } from '../../utils/telenowPayload';
+
 export async function handleTelenowInterest(
   body: unknown,
   requestId: string,
 ): Promise<{ lead_id: string; interest_id: string }> {
-  const parsed = interestSchema.safeParse(body);
+  const normalizedBody = extractTelenowPayload(body);
+  const parsed = interestSchema.safeParse(normalizedBody);
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
     throw new ValidationError(issue.message, issue.path.join('.'));
