@@ -504,7 +504,7 @@ export interface QuotationJobData {
   normalizedPayload: Record<string, unknown>;
 }
 
-export type WhatsAppJobMessageType = 'text' | 'quotation_ready';
+export type WhatsAppJobMessageType = 'text' | 'quotation_ready' | 'document';
 
 export interface WhatsAppJobData {
   conversationId: string;

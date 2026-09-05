@@ -104,7 +104,6 @@ async function processQuotation(data: QuotationJobData): Promise<void> {
   // Notify the customer over WhatsApp
   const customer = await customerService.findById(customerId);
   if (customer?.normalizedPhoneNumber) {
-    // Introductory message with quote count
     await whatsappQueue.add('quotation_intro', {
       conversationId: request?.conversationId ?? null,
       customerId,
@@ -115,22 +114,6 @@ async function processQuotation(data: QuotationJobData): Promise<void> {
         quotationCount: saved.length,
       },
     });
-
-    // One document message per PDF
-    for (const pdf of pdfs) {
-      const pdfUrl = `${config.app.publicBaseUrl}/pdfs/${pdf.fileName}`;
-      await whatsappQueue.add('quotation_pdf', {
-        conversationId: request?.conversationId ?? null,
-        customerId,
-        phoneNumber: customer.normalizedPhoneNumber,
-        messageType: 'document',
-        payload: {
-          documentUrl: pdfUrl,
-          filename: pdf.fileName,
-          caption: `📄 ${pdf.insurerName} — ${insuranceType.toUpperCase()} Insurance Quote`,
-        },
-      });
-    }
   }
 }
 

@@ -17,6 +17,7 @@ import { LifeQuotationService } from '../../services/quotation/LifeQuotationServ
 import { ProviderAAdapter } from '../../providers/quotation/ProviderAAdapter';
 import { ProviderBAdapter } from '../../providers/quotation/ProviderBAdapter';
 import { supabase, unwrap } from '../../db';
+import { config } from '../../config';
 import { logger } from '../../utils/logger';
 import type { WhatsAppInboundMessage, WhatsAppStatusUpdate, InsuranceType, Customer, QuotationRequest } from '../../types';
 
@@ -163,6 +164,12 @@ async function processInteraction(
   // ── Post-step business logic ─────────────────────────────────────────────
   if (result.completed || inputId === 'confirm') {
     await handleConfirmation(conversationId, customerId, phoneNumber);
+    return;
+  }
+
+  // Send quote PDFs on demand
+  if (inputId === 'send_quotes') {
+    await sendQuotePdfs(conversationId, customerId, phoneNumber);
     return;
   }
 
@@ -400,6 +407,31 @@ async function sendQuotationDetails(conversationId: string, customerId: string, 
       `*${q.insurerName}* — ${q.planName}\nPremium: ₹${q.premium.toLocaleString('en-IN')}/year`,
     );
   }
+}
+
+async function sendQuotePdfs(conversationId: string, customerId: string, phoneNumber: string): Promise<void> {
+  const latest = await findLatestQuotationRequest(customerId);
+  if (!latest || !latest.quotations || latest.quotations.length === 0) {
+    await whatsAppService.sendText(conversationId, customerId, phoneNumber, 'No quotes available yet. Please request a quotation first.');
+    return;
+  }
+
+  for (const q of latest.quotations) {
+    const fileName = `quote_${q.id}_${q.insuranceType}.pdf`;
+    const pdfUrl = `${config.app.publicBaseUrl}/pdfs/${fileName}`;
+    await whatsAppService.sendDocument(
+      conversationId,
+      customerId,
+      phoneNumber,
+      pdfUrl,
+      fileName,
+      `${q.insurerName} — ${q.insuranceType.toUpperCase()} Insurance Quote`,
+    );
+  }
+
+  // After all PDFs, offer advisor
+  const advisorMsg = messageBuilder.talkToAdvisor();
+  await whatsAppService.sendMessage(conversationId, customerId, phoneNumber, advisorMsg);
 }
 
 async function sendQuotationComparison(conversationId: string, customerId: string, phoneNumber: string): Promise<void> {

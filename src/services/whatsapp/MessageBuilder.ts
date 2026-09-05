@@ -43,11 +43,19 @@ export class MessageBuilder {
     return {
       type: 'buttons',
       body: count === 1
-        ? 'Your quotation is ready! Here are the details.'
-        : `We found ${count} quotation options for you.`,
+        ? 'Great news! You have *1 quote* ready. Tap below to receive your PDF.'
+        : `Great news! You have *${count} quotes* ready. Tap below to receive all your PDFs.`,
       buttons: [
-        { id: 'view_quotes', title: 'View Quotes' },
-        { id: 'compare_quotes', title: 'Compare' },
+        { id: 'send_quotes', title: 'Get My Quotes' },
+      ],
+    };
+  }
+
+  talkToAdvisor(): BuiltMessage {
+    return {
+      type: 'buttons',
+      body: 'Would you like to speak with one of our advisors to help you choose the best plan?',
+      buttons: [
         { id: 'talk_advisor', title: 'Talk to Advisor' },
       ],
     };

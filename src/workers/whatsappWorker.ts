@@ -2,7 +2,7 @@ import { Worker } from 'bullmq';
 import { redisConnection } from './queues';
 import { whatsAppService } from '../services/whatsapp/WhatsAppService';
 import { messageBuilder } from '../services/whatsapp/MessageBuilder';
-import { quotationRequestService } from '../services/quotation';
+
 import { supabase, unwrap } from '../db';
 import { Id } from '../utils/idGenerator';
 import { config } from '../config';
@@ -47,29 +47,13 @@ async function processWhatsAppJob(data: WhatsAppJobData): Promise<void> {
 
   switch (messageType) {
     case 'quotation_ready': {
-      const { quotationRequestId, quotationCount } = payload as {
+      const { quotationCount } = payload as {
         quotationRequestId: string;
         quotationCount: number;
       };
 
-      // Send summary message with action buttons
       const msg = messageBuilder.quotationReady(Number(quotationCount));
       await whatsAppService.sendMessage(convId, customerId, phoneNumber, msg);
-
-      // Send a comparison list of the generated quotations
-      const req = await quotationRequestService.findById(quotationRequestId);
-      if (req?.quotations && req.quotations.length > 0) {
-        const comparison = messageBuilder.quotationComparison(
-          req.quotations.map((q) => ({
-            id: q.id,
-            title: q.planName,
-            premium: q.premium,
-            insurer: q.insurerName,
-          })),
-        );
-        await whatsAppService.sendMessage(convId, customerId, phoneNumber, comparison);
-      }
-
       break;
     }
 
