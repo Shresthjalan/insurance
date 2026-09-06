@@ -75,13 +75,27 @@ export class WhatsAppService {
     documentUrl: string,
     filename: string,
     caption?: string,
+    filePath?: string,
   ): Promise<string> {
-    const result = await this.provider.sendDocument({
-      to: phoneNumber,
-      documentUrl,
-      filename,
-      caption,
-    });
+    // Prefer uploading the file to WhatsApp (works without a public URL).
+    // Fall back to sending by link if no local path is available.
+    let result: { providerMessageId: string; status: string };
+    if (filePath) {
+      const mediaId = await this.provider.uploadMedia(filePath, 'application/pdf', filename);
+      result = await this.provider.sendDocument({
+        to: phoneNumber,
+        documentId: mediaId,
+        filename,
+        caption,
+      });
+    } else {
+      result = await this.provider.sendDocument({
+        to: phoneNumber,
+        documentUrl,
+        filename,
+        caption,
+      });
+    }
 
     await conversationService.saveMessage({
       conversationId,

@@ -65,6 +65,7 @@ export interface WhatsAppProvider {
   sendButtons(opts: SendButtonsOptions): Promise<SendMessageResult>;
   sendList(opts: SendListOptions): Promise<SendMessageResult>;
   sendTemplate(opts: SendTemplateOptions): Promise<SendMessageResult>;
+  uploadMedia(filePath: string, mimeType: string, filename?: string): Promise<string>;
   markRead(phoneNumber: string, messageId: string): Promise<void>;
   parseWebhook(body: unknown, signature?: string): ParsedWebhook;
   verifyWebhookChallenge(query: Record<string, string>): string | null;

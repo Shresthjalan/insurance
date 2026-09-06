@@ -436,6 +436,7 @@ async function sendQuotePdfs(conversationId: string, customerId: string, phoneNu
       pdfUrl,
       fileName,
       `${q.insurerName} — ${q.insuranceType.toUpperCase()} Insurance Quote`,
+      filePath,
     );
   }
 

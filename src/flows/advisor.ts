@@ -28,7 +28,7 @@ export const advisorFlow: FlowDefinition = {
     },
     {
       key: 'preferred_time',
-      type: 'button',
+      type: 'list',
       question: 'What time would you prefer?',
       options: [
         { id: '10:00', title: '10:00 AM' },

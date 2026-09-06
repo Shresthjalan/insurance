@@ -1,5 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 import type {
   WhatsAppProvider,
   SendTextOptions,
@@ -117,6 +119,37 @@ export class MetaWhatsAppProvider implements WhatsAppProvider {
         ...(components && { components }),
       },
     });
+  }
+
+  async uploadMedia(filePath: string, mimeType: string, filename?: string): Promise<string> {
+    try {
+      const bytes = fs.readFileSync(filePath);
+      const form = new FormData();
+      form.append('messaging_product', 'whatsapp');
+      form.append('type', mimeType);
+      form.append(
+        'file',
+        new Blob([bytes], { type: mimeType }),
+        filename ?? path.basename(filePath),
+      );
+
+      const url = `${config.whatsapp.apiBaseUrl}/${config.whatsapp.apiVersion}/${this.phoneNumberId}/media`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${config.whatsapp.accessToken}` },
+        body: form,
+      });
+
+      const data = (await res.json()) as { id?: string; error?: { message?: string } };
+      if (!res.ok || !data.id) {
+        throw new ProviderError(`Media upload failed: ${data.error?.message ?? res.statusText}`);
+      }
+      return data.id;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error('WhatsApp media upload failed', { error: msg });
+      throw new ProviderError(`WhatsApp media upload failed: ${msg}`);
+    }
   }
 
   async markRead(phoneNumber: string, messageId: string): Promise<void> {

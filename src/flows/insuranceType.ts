@@ -8,7 +8,7 @@ export const insuranceTypeSelectionFlow: FlowDefinition = {
   steps: [
     {
       key: 'insurance_type',
-      type: 'button',
+      type: 'list',
       question: 'Which insurance are you interested in?',
       options: [
         { id: 'car', title: 'Car Insurance' },
