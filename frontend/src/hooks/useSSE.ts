@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import type { DashboardEvent, SSEEventType } from '../types'
 
 const MAX_EVENTS = 100
@@ -13,6 +14,7 @@ function nextId(): string {
 export function useSSE(): { events: DashboardEvent[]; connected: boolean } {
   const [events, setEvents] = useState<DashboardEvent[]>([])
   const [connected, setConnected] = useState(false)
+  const queryClient = useQueryClient()
   const esRef = useRef<EventSource | null>(null)
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const unmounted = useRef(false)
@@ -45,6 +47,7 @@ export function useSSE(): { events: DashboardEvent[]; connected: boolean } {
           const next = [event, ...prev]
           return next.length > MAX_EVENTS ? next.slice(0, MAX_EVENTS) : next
         })
+        queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       } catch {
         // ignore malformed messages
       }

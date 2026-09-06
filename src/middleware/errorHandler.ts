@@ -11,6 +11,14 @@ export function errorHandler(
 ): void {
   const requestId = req.requestId ?? 'unknown';
 
+  if (res.headersSent) {
+    logger.error('Error occurred after headers were sent', {
+      request_id: requestId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return;
+  }
+
   if (err instanceof ZodError) {
     const firstIssue = err.issues[0];
     res.status(422).json({

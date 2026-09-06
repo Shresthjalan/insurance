@@ -113,7 +113,8 @@ export class AdvisorService {
     if (!isValid(parsed)) {
       throw new ValidationError('Invalid date format, expected YYYY-MM-DD', 'meeting_date');
     }
-    if (isBefore(parsed, startOfToday())) {
+    const today = startOfToday();
+    if (parsed.getTime() < today.getTime()) {
       throw new ValidationError('Appointment date cannot be in the past', 'meeting_date');
     }
     if (!/^\d{2}:\d{2}$/.test(time)) {

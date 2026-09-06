@@ -39,23 +39,25 @@ export class MessageBuilder {
     }
   }
 
+  quotationReadyGreeting(count: number): string {
+    return count === 1
+      ? 'Thanks for choosing First Advisor! There is 1 quote ready for you.'
+      : `Thanks for choosing First Advisor! There are ${count} quotes ready for you.`;
+  }
+
   quotationReady(count: number): BuiltMessage {
     return {
-      type: 'buttons',
-      body: count === 1
-        ? 'Great news! You have *1 quote* ready. Tap below to receive your PDF.'
-        : `Great news! You have *${count} quotes* ready. Tap below to receive all your PDFs.`,
-      buttons: [
-        { id: 'send_quotes', title: 'Get My Quotes' },
-      ],
+      type: 'text',
+      body: this.quotationReadyGreeting(count),
     };
   }
 
   talkToAdvisor(): BuiltMessage {
     return {
       type: 'buttons',
-      body: 'Would you like to speak with one of our advisors to help you choose the best plan?',
+      body: 'Would you like to speak with one of our advisors or request another quote?',
       buttons: [
+        { id: 'get_quote', title: 'Get new Quote' },
         { id: 'talk_advisor', title: 'Talk to Advisor' },
       ],
     };
@@ -88,10 +90,9 @@ export class MessageBuilder {
   homeMenu(): BuiltMessage {
     return {
       type: 'buttons',
-      body: 'Welcome! How can we help you today?',
+      body: 'Welcome to First Advisor! How can we help you today?',
       buttons: [
-        { id: 'get_quote', title: 'Get Insurance Quote' },
-        { id: 'existing_quote', title: 'View Existing Quote' },
+        { id: 'get_quote', title: 'Get new Quote' },
         { id: 'talk_advisor', title: 'Talk to Advisor' },
       ],
     };

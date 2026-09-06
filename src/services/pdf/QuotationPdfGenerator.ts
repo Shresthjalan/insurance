@@ -7,17 +7,15 @@ import { logger } from '../../utils/logger';
 const OUTPUT_DIR = path.resolve(process.cwd(), 'uploads', 'pdfs');
 
 // ── Colour palette ────────────────────────────────────────────────────────────
-const NAVY   = '#1A2E5A';
-const TEAL   = '#0D7377';
-const GOLD   = '#C8972B';
-const DARK   = '#1C1C1C';
-const MID    = '#444444';
-const LIGHT  = '#777777';
-const BORDER = '#D0D6E0';
-const BG     = '#F5F7FA';
-const WHITE  = '#FFFFFF';
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
+const PRIMARY     = '#0F2C59'; // Deep Navy
+const ACCENT      = '#0066CC'; // Royal Blue
+const SUCCESS     = '#059669'; // Emerald Green
+const TEXT_DARK   = '#1F2937'; // Charcoal
+const TEXT_MUTED  = '#6B7280'; // Slate Gray
+const BORDER_COLOR= '#E5E7EB'; // Light Border
+const BG_ALT      = '#F8FAFC'; // Soft Row Alt
+const BG_HEADER   = '#0F2C59';
+const WHITE       = '#FFFFFF';
 
 function ensureDir() {
   if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR, { recursive: true });
@@ -45,346 +43,222 @@ function writePdf(doc: PDFKit.PDFDocument, filePath: string): Promise<void> {
   });
 }
 
-// ── Shared layout helpers ─────────────────────────────────────────────────────
+// ── Layout Components ─────────────────────────────────────────────────────────
 
 function drawHeader(doc: PDFKit.PDFDocument, companyName: string, tagline: string, regNumber: string, irdaiReg: string) {
-  // Navy banner
-  doc.rect(0, 0, doc.page.width, 90).fill(NAVY);
+  // Top Banner
+  doc.rect(0, 0, doc.page.width, 70).fill(BG_HEADER);
 
-  // Company name
-  doc.font('Helvetica-Bold').fontSize(22).fillColor(WHITE).text(companyName, 40, 20);
+  // Logo / Company Name
+  doc.font('Helvetica-Bold').fontSize(18).fillColor(WHITE).text('FIRST ADVISOR', 36, 18);
+  doc.font('Helvetica').fontSize(9).fillColor('#94A3B8').text(companyName, 36, 42);
 
-  // Tagline
-  doc.font('Helvetica').fontSize(9).fillColor('#A8C4E0').text(tagline, 40, 48);
+  // Right-aligned IRDAI Details
+  doc.font('Helvetica').fontSize(8).fillColor('#CBD5E1')
+    .text(`CIN: ${regNumber}`, 0, 22, { align: 'right', width: doc.page.width - 36 })
+    .text(`IRDAI Reg No.: ${irdaiReg}`, 0, 38, { align: 'right', width: doc.page.width - 36 });
 
-  // Right side — reg info
-  doc.font('Helvetica').fontSize(8).fillColor('#A8C4E0')
-    .text(`CIN: ${regNumber}`, 0, 28, { align: 'right', width: doc.page.width - 40 })
-    .text(`IRDAI Reg No.: ${irdaiReg}`, 0, 42, { align: 'right', width: doc.page.width - 40 });
-
-  // Gold accent line
-  doc.rect(0, 90, doc.page.width, 4).fill(GOLD);
-
-  doc.y = 110;
+  // Accent Line
+  doc.rect(0, 70, doc.page.width, 3).fill(ACCENT);
+  doc.y = 85;
 }
 
-function drawDocumentTitle(doc: PDFKit.PDFDocument, title: string, quoteRef: string) {
-  doc.moveDown(0.4);
-  doc.font('Helvetica-Bold').fontSize(15).fillColor(NAVY).text(title, 40);
-  doc.font('Helvetica').fontSize(9).fillColor(LIGHT)
-    .text(`Quote Reference: ${quoteRef}   |   Date: ${today()}   |   Valid Until: ${validThru()}`, 40);
-  doc.moveDown(0.5);
-  doc.rect(40, doc.y, doc.page.width - 80, 1).fill(BORDER);
-  doc.moveDown(0.6);
-}
-
-function drawSectionHeading(doc: PDFKit.PDFDocument, title: string) {
-  doc.rect(40, doc.y, doc.page.width - 80, 22).fill(NAVY);
-  doc.font('Helvetica-Bold').fontSize(10).fillColor(WHITE)
-    .text(title, 48, doc.y - 16);
-  doc.moveDown(0.5);
-}
-
-function drawRow(doc: PDFKit.PDFDocument, label: string, value: string, shade: boolean) {
-  const rowH = 20;
+function drawTitleBlock(doc: PDFKit.PDFDocument, title: string, quoteId: string) {
   const y = doc.y;
-  if (shade) doc.rect(40, y, doc.page.width - 80, rowH).fill(BG);
-  doc.font('Helvetica').fontSize(9.5).fillColor(MID).text(label, 50, y + 5, { width: 220 });
-  doc.font('Helvetica-Bold').fontSize(9.5).fillColor(DARK).text(value, 270, y + 5, { width: 260 });
-  doc.y = y + rowH;
+  doc.font('Helvetica-Bold').fontSize(14).fillColor(PRIMARY).text(title, 36, y);
+  doc.font('Helvetica').fontSize(8.5).fillColor(TEXT_MUTED)
+    .text(`Ref: ${quoteId}   |   Date: ${today()}   |   Valid Until: ${validThru()}`, 36, y + 20);
+
+  doc.y = y + 38;
+  doc.rect(36, doc.y, doc.page.width - 72, 1).fill(BORDER_COLOR);
+  doc.y += 10;
 }
 
-function drawHighlightBox(doc: PDFKit.PDFDocument, label: string, value: string) {
-  doc.moveDown(0.4);
-  doc.rect(40, doc.y, doc.page.width - 80, 40).fill(TEAL);
-  doc.font('Helvetica').fontSize(9).fillColor(WHITE).text(label, 50, doc.y - 32);
-  doc.font('Helvetica-Bold').fontSize(16).fillColor(WHITE).text(value, 50, doc.y - 20);
-  doc.moveDown(0.4);
-}
+function drawHighlightCard(doc: PDFKit.PDFDocument, label: string, value: string, subtext?: string) {
+  const y = doc.y;
+  const w = doc.page.width - 72;
+  const h = 44;
 
-function drawBullets(doc: PDFKit.PDFDocument, items: string[]) {
-  doc.moveDown(0.3);
-  for (const item of items) {
-    const y = doc.y;
-    doc.rect(50, y + 5, 5, 5).fill(GOLD);
-    doc.font('Helvetica').fontSize(9.5).fillColor(MID).text(item, 62, y, { width: doc.page.width - 110 });
-    doc.moveDown(0.2);
+  doc.roundedRect(36, y, w, h, 6).fill(BG_ALT);
+  doc.roundedRect(36, y, w, h, 6).stroke(BORDER_COLOR);
+
+  doc.font('Helvetica-Bold').fontSize(8.5).fillColor(TEXT_MUTED).text(label.toUpperCase(), 48, y + 8);
+  doc.font('Helvetica-Bold').fontSize(16).fillColor(SUCCESS).text(value, 48, y + 22);
+
+  if (subtext) {
+    doc.font('Helvetica').fontSize(8.5).fillColor(TEXT_MUTED).text(subtext, doc.page.width - 240, y + 16, { width: 200, align: 'right' });
   }
+
+  doc.y = y + h + 12;
 }
 
-function drawFooter(doc: PDFKit.PDFDocument, address: string, phone: string, email: string, website: string) {
+function drawSectionHeader(doc: PDFKit.PDFDocument, title: string) {
+  const y = doc.y;
+  doc.font('Helvetica-Bold').fontSize(10).fillColor(PRIMARY).text(title.toUpperCase(), 36, y);
+  doc.rect(36, y + 14, doc.page.width - 72, 1).fill(PRIMARY);
+  doc.y = y + 20;
+}
+
+function drawGridTable(doc: PDFKit.PDFDocument, rows: [string, string][]) {
+  const startY = doc.y;
+  const col1W = 200;
+  const col2W = doc.page.width - 72 - col1W;
+  const rowH = 18;
+
+  rows.forEach(([label, val], idx) => {
+    const y = doc.y;
+    if (idx % 2 === 0) {
+      doc.rect(36, y, doc.page.width - 72, rowH).fill(BG_ALT);
+    }
+    doc.font('Helvetica').fontSize(8.5).fillColor(TEXT_MUTED).text(label, 44, y + 4, { width: col1W - 10 });
+    doc.font('Helvetica-Bold').fontSize(8.5).fillColor(TEXT_DARK).text(val, 36 + col1W, y + 4, { width: col2W - 10 });
+    doc.y = y + rowH;
+  });
+
+  doc.y = startY + (rows.length * rowH) + 10;
+}
+
+function drawBulletList(doc: PDFKit.PDFDocument, items: string[]) {
+  const startY = doc.y;
+  items.forEach((item) => {
+    const y = doc.y;
+    doc.circle(42, y + 5, 2).fill(ACCENT);
+    doc.font('Helvetica').fontSize(8.5).fillColor(TEXT_DARK).text(item, 50, y, { width: doc.page.width - 90 });
+    doc.y = y + 14;
+  });
+  doc.y = startY + (items.length * 14) + 10;
+}
+
+function drawFooter(doc: PDFKit.PDFDocument, address: string, phone: string, email: string) {
   const pageH = doc.page.height;
-  doc.rect(0, pageH - 55, doc.page.width, 55).fill(NAVY);
-  doc.font('Helvetica').fontSize(8).fillColor('#A8C4E0')
-    .text(address, 40, pageH - 46, { width: doc.page.width - 80, align: 'center' })
-    .text(`${phone}  |  ${email}  |  ${website}`, 40, pageH - 30, { width: doc.page.width - 80, align: 'center' });
-  doc.font('Helvetica').fontSize(7).fillColor('#6A88AA')
-    .text('This is a computer-generated quotation. Subject to underwriting approval. Terms & conditions apply.', 40, pageH - 16, { width: doc.page.width - 80, align: 'center' });
+  const footerY = pageH - 40;
+
+  doc.rect(0, footerY, doc.page.width, 40).fill(BG_HEADER);
+  doc.font('Helvetica').fontSize(7.5).fillColor('#94A3B8')
+    .text(`${address}  •  Ph: ${phone}  •  Email: ${email}`, 36, footerY + 10, { align: 'center', width: doc.page.width - 72 })
+    .text('This is an official computer-generated quotation issued by First Advisor. Subject to terms & underwriting.', 36, footerY + 24, { align: 'center', width: doc.page.width - 72 });
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// CAR INSURANCE PDF
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Policy Types ──────────────────────────────────────────────────────────────
 
 function buildCarPdf(doc: PDFKit.PDFDocument, q: Quotation, payload: Record<string, unknown>) {
-  const isPAA = q.provider === 'provider_a';
-  const company = isPAA ? 'Acme General Insurance Co. Ltd.' : 'Beta General Assurance Ltd.';
-  const tagline = isPAA ? 'Trusted Protection for Every Journey' : 'Drive with Confidence, Insure with Assurance';
-  const cin = isPAA ? 'U66010MH2000PLC123456' : 'U66010DL2005PLC654321';
-  const irdai = isPAA ? '134' : '152';
+  drawHeader(doc, 'Acme General Insurance Ltd.', 'Motor Insurance Quotation', 'U66010MH2000PLC123456', '134');
+  drawTitleBlock(doc, `${q.insurerName} — Car Insurance Quote`, q.id);
 
-  drawHeader(doc, company, tagline, cin, irdai);
-  drawDocumentTitle(doc, 'Motor Insurance — Quotation', q.id);
-
-  // Policy snapshot
-  drawSectionHeading(doc, '  POLICY SNAPSHOT');
   const premium = q.premium;
   const gst = Math.round(premium * 0.18);
-  drawHighlightBox(doc, 'Total Premium Payable (incl. 18% GST)', fmtCurrency(premium + gst) + ' per year');
+  drawHighlightCard(doc, 'Total Annual Premium (incl. 18% GST)', fmtCurrency(premium + gst), `Base: ${fmtCurrency(premium)} + GST: ${fmtCurrency(gst)}`);
 
-  // Vehicle details
-  doc.moveDown(0.6);
-  drawSectionHeading(doc, '  VEHICLE DETAILS');
-  const rows: [string, string][] = [
-    ['Make & Model', `${payload['vehicle_make'] ?? 'N/A'} ${payload['vehicle_model'] ?? ''}`],
-    ['Variant / Fuel Type', `${payload['vehicle_variant'] ?? '—'} / ${payload['fuel_type'] ?? 'Petrol'}`],
-    ['Year of Manufacture', String(payload['registration_year'] ?? 'N/A')],
-    ['RTO', String(payload['rto'] ?? 'N/A')],
-    ['Policy Type', q.planName.includes('Comprehensive') ? 'Comprehensive (Package)' : 'Third-Party Only'],
-    ['NCB Applicable', payload['previous_claim'] === false ? `${payload['ncb_percentage'] ?? 0}%` : 'Not eligible'],
-  ];
-  rows.forEach(([l, v], i) => drawRow(doc, l, v, i % 2 === 0));
+  drawSectionHeader(doc, 'Vehicle & Policy Details');
+  drawGridTable(doc, [
+    ['Insurer', q.insurerName],
+    ['Plan Name', q.planName],
+    ['Vehicle Make & Model', `${payload['vehicle_make'] ?? 'Car'} ${payload['vehicle_model'] ?? ''}`.trim()],
+    ['Fuel Type / Reg Year', `${payload['fuel_type'] ?? 'Petrol'} / ${payload['registration_year'] ?? 'N/A'}`],
+    ['RTO Location', String(payload['rto'] ?? 'N/A')],
+    ['Policy Type', q.planName.includes('Comprehensive') ? 'Comprehensive Package' : 'Third-Party Liability'],
+    ['No Claim Bonus (NCB)', payload['previous_claim'] === false ? `${payload['ncb_percentage'] ?? 0}%` : '0%'],
+  ]);
 
-  // Premium breakdown
-  doc.moveDown(0.6);
-  drawSectionHeading(doc, '  PREMIUM BREAKDOWN');
-  const odPremium   = Math.round(premium * 0.60);
-  const tpPremium   = Math.round(premium * 0.28);
-  const paCover     = Math.round(premium * 0.06);
-  const addons      = Math.round(premium * 0.06);
-  const breakdown: [string, string][] = [
-    ['Own Damage (OD) Premium', fmtCurrency(odPremium)],
-    ['Third-Party Liability (TP)', fmtCurrency(tpPremium)],
-    ['Personal Accident Cover (PA)', fmtCurrency(paCover)],
-    ['Add-ons & Riders', fmtCurrency(addons)],
-    ['Basic Premium Total', fmtCurrency(premium)],
-    ['GST @ 18%', fmtCurrency(gst)],
-    ['TOTAL PREMIUM', fmtCurrency(premium + gst)],
-  ];
-  breakdown.forEach(([l, v], i) => drawRow(doc, l, v, i % 2 === 0));
-
-  // Coverage
-  doc.moveDown(0.6);
-  drawSectionHeading(doc, '  KEY COVERAGE FEATURES');
-  drawBullets(doc, [
-    'Loss or damage to the insured vehicle due to accident, fire, theft, or natural calamities',
-    'Third-party bodily injury and property damage liability (mandatory)',
-    'Compulsory Personal Accident cover of ₹15,00,000 for owner-driver',
-    '24×7 roadside assistance across 500+ cities',
-    'Cashless claim settlement at 4,000+ network garages',
-    'Zero depreciation add-on available (on request)',
-    'Engine protect & consumables cover available as riders',
+  drawSectionHeader(doc, 'Coverage & Key Benefits');
+  drawBulletList(doc, [
+    'Loss or damage to vehicle due to accident, theft, fire, or natural calamity',
+    'Third-party bodily injury & property damage cover as per Motor Vehicles Act',
+    'Personal Accident cover of ₹15,00,000 for owner-driver',
+    'Cashless repair network across 4,000+ authorized workshops',
+    '24×7 Emergency Roadside Assistance & Towing Support',
   ]);
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// HEALTH INSURANCE PDF
-// ─────────────────────────────────────────────────────────────────────────────
 
 function buildHealthPdf(doc: PDFKit.PDFDocument, q: Quotation, payload: Record<string, unknown>) {
-  const isPAA = q.provider === 'provider_a';
-  const company = isPAA ? 'Acme Health Insurance Ltd.' : 'Beta Health Assurance Co. Ltd.';
-  const tagline = isPAA ? 'Comprehensive Health Protection for Your Family' : 'Your Health is Our Priority';
-  const cin = isPAA ? 'U66000MH2008PLC187342' : 'U66000KA2010PLC234567';
-  const irdai = isPAA ? '151' : '162';
+  drawHeader(doc, 'Acme Health Insurance Ltd.', 'Health Insurance Quotation', 'U66000MH2008PLC187342', '151');
+  drawTitleBlock(doc, `${q.insurerName} — Health Insurance Quote`, q.id);
 
-  drawHeader(doc, company, tagline, cin, irdai);
-  drawDocumentTitle(doc, 'Health Insurance — Quotation', q.id);
-
-  const sumInsured = q.sumAssured ?? 300000;
+  const sumInsured = q.sumAssured ?? 500000;
   const premium = q.premium;
   const gst = Math.round(premium * 0.18);
-  drawHighlightBox(doc, `Sum Insured: ${fmtCurrency(sumInsured)}  |  Total Premium (incl. GST)`, fmtCurrency(premium + gst) + ' / year');
+  drawHighlightCard(doc, 'Total Annual Premium (incl. 18% GST)', fmtCurrency(premium + gst), `Sum Insured: ${fmtCurrency(sumInsured)}`);
 
-  doc.moveDown(0.6);
-  drawSectionHeading(doc, '  PLAN DETAILS');
-  const rows: [string, string][] = [
+  drawSectionHeader(doc, 'Plan Summary');
+  drawGridTable(doc, [
+    ['Insurer', q.insurerName],
     ['Plan Name', q.planName],
-    ['Plan Type', String(payload['plan_type'] ?? 'Individual')],
-    ['Members Covered', String(payload['members_count'] ?? '1')],
-    ['Policy Term', '1 Year'],
-    ['Premium Payment Mode', 'Annual'],
     ['Sum Insured', fmtCurrency(sumInsured)],
-    ['Pre-existing Disease Waiting', '2 Years'],
-    ['Initial Waiting Period', '30 Days (accidents excluded)'],
-  ];
-  rows.forEach(([l, v], i) => drawRow(doc, l, v, i % 2 === 0));
+    ['Policy Tenure', '1 Year (Annual)'],
+    ['Members Covered', String(payload['members_count'] ?? '1')],
+    ['Pre-existing Disease Waiting', '24 Months'],
+    ['Room Rent Limit', 'Single Private AC Room (No Capping)'],
+  ]);
 
-  doc.moveDown(0.6);
-  drawSectionHeading(doc, '  PREMIUM BREAKDOWN');
-  const base = Math.round(premium * 0.85);
-  const loading = premium - base;
-  const premRows: [string, string][] = [
-    ['Base Premium', fmtCurrency(base)],
-    ['Medical Loading', fmtCurrency(loading)],
-    ['Net Premium', fmtCurrency(premium)],
-    ['GST @ 18%', fmtCurrency(gst)],
-    ['TOTAL PREMIUM PAYABLE', fmtCurrency(premium + gst)],
-  ];
-  premRows.forEach(([l, v], i) => drawRow(doc, l, v, i % 2 === 0));
-
-  doc.moveDown(0.6);
-  drawSectionHeading(doc, '  COVERAGE HIGHLIGHTS');
-  drawBullets(doc, [
-    'In-patient hospitalisation: Room rent up to ₹5,000/day (single AC room)',
-    'Day-care procedures: All 540+ listed procedures covered',
-    'Pre-hospitalisation expenses: 60 days',
-    'Post-hospitalisation expenses: 90 days',
-    'Ambulance charges: Up to ₹2,000 per hospitalisation',
+  drawSectionHeader(doc, 'Coverage Highlights');
+  drawBulletList(doc, [
+    'In-patient hospitalisation expenses covered up to Sum Insured',
+    'All day-care procedures & modern treatments covered',
+    'Pre-hospitalisation (60 days) & Post-hospitalisation (90 days) expenses',
+    'Cashless treatment at 7,500+ empanelled network hospitals nationwide',
     'Annual health check-up for all insured members',
-    'Cashless at 7,500+ empanelled network hospitals pan-India',
-    'No-Claim Bonus: 10% increase in SI for every claim-free year (max 50%)',
-    'Restoration benefit: SI restored once per policy year after exhaustion',
-    'AYUSH treatment (Ayurveda, Yoga, Unani, Siddha, Homeopathy) covered',
+    '100% Reload / Restoration of Sum Insured upon exhaustion',
   ]);
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// TERM INSURANCE PDF
-// ─────────────────────────────────────────────────────────────────────────────
 
 function buildTermPdf(doc: PDFKit.PDFDocument, q: Quotation, payload: Record<string, unknown>) {
-  const isPAA = q.provider === 'provider_a';
-  const company = isPAA ? 'Acme Life Insurance Co. Ltd.' : 'Beta Life Insurance Ltd.';
-  const tagline = isPAA ? 'Securing Your Family\'s Future Today' : 'Life Insurance Simplified';
-  const cin = isPAA ? 'U66010MH1985PLC034512' : 'U66010GJ1990PLC045678';
-  const irdai = isPAA ? '112' : '128';
+  drawHeader(doc, 'Acme Life Insurance Ltd.', 'Term Insurance Quotation', 'U66010MH1985PLC034512', '112');
+  drawTitleBlock(doc, `${q.insurerName} — Term Life Quote`, q.id);
 
-  drawHeader(doc, company, tagline, cin, irdai);
-  drawDocumentTitle(doc, 'Term Life Insurance — Quotation', q.id);
-
-  const sumAssured = q.sumAssured ?? 5000000;
+  const sumAssured = q.sumAssured ?? 10000000;
   const premium = q.premium;
   const gst = Math.round(premium * 0.18);
-  const policyTerm = q.policyTerm ?? 20;
-  drawHighlightBox(doc, `Life Cover: ${fmtCurrency(sumAssured)}  |  Annual Premium (incl. GST)`, fmtCurrency(premium + gst));
+  const term = q.policyTerm ?? 30;
+  drawHighlightCard(doc, 'Annual Premium (incl. 18% GST)', fmtCurrency(premium + gst), `Life Cover: ${fmtCurrency(sumAssured)}`);
 
-  doc.moveDown(0.6);
-  drawSectionHeading(doc, '  PLAN DETAILS');
-  const rows: [string, string][] = [
+  drawSectionHeader(doc, 'Policy Terms');
+  drawGridTable(doc, [
+    ['Insurer', q.insurerName],
     ['Plan Name', q.planName],
-    ['Policy Type', 'Pure Term — Level Cover'],
-    ['Life Assured Age', String(payload['age'] ?? '35') + ' years'],
-    ['Gender', String(payload['gender'] ?? 'Male')],
-    ['Sum Assured', fmtCurrency(sumAssured)],
-    ['Policy Term', `${policyTerm} Years`],
-    ['Premium Payment Term', `${policyTerm} Years (Regular Pay)`],
-    ['Premium Frequency', 'Annual'],
-    ['Death Benefit Payout', 'Lump-sum to nominee'],
-    ['Smoker Status', String(payload['smoker'] ?? 'Non-Smoker')],
-  ];
-  rows.forEach(([l, v], i) => drawRow(doc, l, v, i % 2 === 0));
+    ['Life Cover (Sum Assured)', fmtCurrency(sumAssured)],
+    ['Policy Term', `${term} Years`],
+    ['Premium Payment Term', `${term} Years (Regular Pay)`],
+    ['Smoker / Tobacco Status', String(payload['smoking_tobacco_status'] ?? 'Non-Smoker')],
+  ]);
 
-  doc.moveDown(0.6);
-  drawSectionHeading(doc, '  PREMIUM SCHEDULE');
-  const premRows: [string, string][] = [
-    ['Annual Premium (excl. GST)', fmtCurrency(premium)],
-    ['GST @ 18%', fmtCurrency(gst)],
-    ['Annual Premium (incl. GST)', fmtCurrency(premium + gst)],
-    ['Monthly Equiv. (for reference)', fmtCurrency(Math.round((premium + gst) / 12))],
-    ['Total Premiums over Policy Term', fmtCurrency((premium + gst) * policyTerm)],
-  ];
-  premRows.forEach(([l, v], i) => drawRow(doc, l, v, i % 2 === 0));
-
-  doc.moveDown(0.6);
-  drawSectionHeading(doc, '  PLAN FEATURES & RIDERS AVAILABLE');
-  drawBullets(doc, [
-    `Death Benefit: ${fmtCurrency(sumAssured)} paid to nominee upon life assured\'s death`,
-    'Tax benefits under Section 80C (premium) and Section 10(10D) (death benefit)',
-    'Accidental Death Benefit Rider: Additional SA payable on accidental death (optional)',
-    'Critical Illness Rider: Lump-sum on diagnosis of 34 critical illnesses (optional)',
-    'Waiver of Premium Rider: Future premiums waived on disability (optional)',
-    'Terminal Illness Benefit: 25% of SA advanced on terminal diagnosis (inbuilt)',
-    'Free look period: 30 days from policy receipt',
-    'Grace period: 30 days for annual mode premium payment',
+  drawSectionHeader(doc, 'Key Features');
+  drawBulletList(doc, [
+    `Guaranteed death benefit of ${fmtCurrency(sumAssured)} paid to nominee`,
+    'Tax deductions under Section 80C and tax-free payout under Section 10(10D)',
+    'Terminal Illness benefit: Early payout on diagnosis of terminal conditions',
+    'Optional Riders available: Accidental Death Benefit & Critical Illness Cover',
   ]);
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// LIFE INSURANCE PDF (Endowment / Whole Life)
-// ─────────────────────────────────────────────────────────────────────────────
 
 function buildLifePdf(doc: PDFKit.PDFDocument, q: Quotation, payload: Record<string, unknown>) {
-  const company = 'Beta Life Insurance Ltd.';
-  const tagline = 'Grow Your Wealth. Protect Your Family.';
-  const cin = 'U66010GJ1990PLC045678';
-  const irdai = '128';
+  drawHeader(doc, 'Acme Life Insurance Ltd.', 'Savings & Life Protection Quote', 'U66010MH1985PLC034512', '112');
+  drawTitleBlock(doc, `${q.insurerName} — Life Insurance Quote`, q.id);
 
-  drawHeader(doc, company, tagline, cin, irdai);
-  drawDocumentTitle(doc, 'Life Insurance — Savings & Protection Quotation', q.id);
+  const sumAssured = q.sumAssured ?? 1000000;
+  const premium = q.premium;
+  const gst = Math.round(premium * 0.045);
+  const term = q.policyTerm ?? 15;
+  drawHighlightCard(doc, 'Annual Premium (incl. GST)', fmtCurrency(premium + gst), `Sum Assured: ${fmtCurrency(sumAssured)}`);
 
-  const sumAssured  = q.sumAssured ?? 1000000;
-  const premium     = q.premium;
-  const gst         = Math.round(premium * 0.04625); // life insurance GST is 4.625% first year, 2.25% thereafter — simplified here
-  const policyTerm  = q.policyTerm ?? 15;
-  const maturity    = Math.round(sumAssured * (q.planName.includes('Whole') ? 2.8 : 1.65));
-
-  drawHighlightBox(doc, `Guaranteed Maturity Benefit: ${fmtCurrency(maturity)}  |  Annual Premium (incl. GST)`, fmtCurrency(premium + gst));
-
-  doc.moveDown(0.6);
-  drawSectionHeading(doc, '  PLAN DETAILS');
-  const rows: [string, string][] = [
+  drawSectionHeader(doc, 'Plan Structure');
+  drawGridTable(doc, [
+    ['Insurer', q.insurerName],
     ['Plan Name', q.planName],
-    ['Plan Category', q.planName.includes('Whole') ? 'Whole Life Endowment' : 'Traditional Endowment'],
-    ['Life Assured Age', String(payload['age'] ?? '32') + ' years'],
     ['Sum Assured', fmtCurrency(sumAssured)],
-    ['Policy Term', `${policyTerm} Years`],
-    ['Premium Paying Term', `${policyTerm} Years`],
-    ['Maturity Age', String((payload['age'] as number ?? 32) + policyTerm) + ' years'],
-    ['Premium Mode', 'Annual'],
-    ['Bonus Type', 'Simple Reversionary Bonus + Terminal Bonus'],
-  ];
-  rows.forEach(([l, v], i) => drawRow(doc, l, v, i % 2 === 0));
+    ['Policy Term', `${term} Years`],
+    ['Premium Payment Mode', 'Annual'],
+  ]);
 
-  doc.moveDown(0.6);
-  drawSectionHeading(doc, '  BENEFIT ILLUSTRATION (GUARANTEED VALUES)');
-  const benefitRows: [string, string][] = [
-    ['Sum Assured (Death Benefit)', fmtCurrency(sumAssured)],
-    ['Accrued Bonus (Projected @ 4%)', fmtCurrency(Math.round(sumAssured * 0.40))],
-    ['Accrued Bonus (Projected @ 8%)', fmtCurrency(Math.round(sumAssured * 0.85))],
-    ['Guaranteed Maturity Benefit', fmtCurrency(maturity)],
-    ['Surrender Value (after 3 yrs)', 'Available — refer policy schedule'],
-    ['Loan against Policy', 'Up to 90% of Surrender Value after 3 years'],
-  ];
-  benefitRows.forEach(([l, v], i) => drawRow(doc, l, v, i % 2 === 0));
-
-  doc.moveDown(0.6);
-  drawSectionHeading(doc, '  PREMIUM SCHEDULE');
-  const premRows: [string, string][] = [
-    ['Annual Premium (excl. GST)', fmtCurrency(premium)],
-    ['GST (4.625% Yr 1 / 2.25% thereafter)', fmtCurrency(gst)],
-    ['Annual Premium (incl. GST)', fmtCurrency(premium + gst)],
-    ['Total Premium paid over term', fmtCurrency((premium + gst) * policyTerm)],
-    ['Return on Investment (indicative)', `${Math.round(((maturity / ((premium + gst) * policyTerm)) - 1) * 100)}% absolute`],
-  ];
-  premRows.forEach(([l, v], i) => drawRow(doc, l, v, i % 2 === 0));
-
-  doc.moveDown(0.6);
-  drawSectionHeading(doc, '  KEY FEATURES');
-  drawBullets(doc, [
-    'Guaranteed death benefit: Higher of Sum Assured or 10× annualised premium',
-    'Maturity benefit: Sum Assured + accrued bonuses payable on survival',
-    'Section 80C tax deduction on premiums paid (up to ₹1,50,000)',
-    'Section 10(10D) tax-free maturity and death proceeds',
-    'Automatic premium loan facility to prevent policy lapse',
-    'Paid-up value available if premiums discontinued after 3 full years',
-    'Surrender value after 3 years from policy commencement',
+  drawSectionHeader(doc, 'Benefits');
+  drawBulletList(doc, [
+    'Guaranteed Death Benefit: Higher of Sum Assured or 10× annual premium',
+    'Maturity Benefit: Sum Assured + simple reversionary bonuses on survival',
+    'Tax-free proceeds under Section 10(10D) & Section 80C tax savings',
+    'Loan facility available against policy after 3 years',
   ]);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// PUBLIC API
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Public Export ─────────────────────────────────────────────────────────────
 
 export interface GeneratedPdf {
   quotationId: string;
@@ -399,12 +273,16 @@ export async function generateQuotationPdf(
 ): Promise<GeneratedPdf> {
   ensureDir();
 
-  const doc = new PDFDocument({ size: 'A4', margin: 0, info: {
-    Title:   `Insurance Quotation — ${quotation.planName}`,
-    Author:  quotation.insurerName,
-    Subject: `${quotation.insuranceType.toUpperCase()} Insurance Quote`,
-    Creator: 'InsurancePlatform v1.0',
-  }});
+  const doc = new PDFDocument({
+    size: 'A4',
+    margin: 0,
+    info: {
+      Title: `Quotation — ${quotation.planName}`,
+      Author: quotation.insurerName,
+      Subject: `${quotation.insuranceType.toUpperCase()} Insurance Quote`,
+      Creator: 'First Advisor Platform',
+    },
+  });
 
   switch (quotation.insuranceType) {
     case 'car':    buildCarPdf(doc, quotation, normalizedPayload); break;
@@ -414,29 +292,13 @@ export async function generateQuotationPdf(
     default:       buildHealthPdf(doc, quotation, normalizedPayload);
   }
 
-  // Footer
-  const footerMap: Record<string, [string, string, string, string]> = {
-    'provider_a': [
-      'Acme Tower, BKC, Mumbai 400 051',
-      '+91 22 6655 4400',
-      'support@acmeinsurance.in',
-      'www.acmeinsurance.in',
-    ],
-    'provider_b': [
-      'Beta House, Nariman Point, Mumbai 400 021',
-      '+91 22 4321 9000',
-      'care@betainsurance.in',
-      'www.betainsurance.in',
-    ],
-  };
-  const [addr, ph, em, web] = footerMap[quotation.provider] ?? footerMap['provider_a'];
-  drawFooter(doc, addr, ph, em, web);
+  drawFooter(doc, 'First Advisor Towers, BKC, Mumbai 400 051', '+91 22 6655 4400', 'support@firstadvisor.in');
 
   const fileName = `quote_${quotation.id}_${quotation.insuranceType}.pdf`;
   const filePath = path.join(OUTPUT_DIR, fileName);
 
   await writePdf(doc, filePath);
-  logger.info('PDF generated', { quotationId: quotation.id, file: fileName });
+  logger.info('Clean PDF generated', { quotationId: quotation.id, file: fileName });
 
   return { quotationId: quotation.id, fileName, filePath, insurerName: quotation.insurerName };
 }

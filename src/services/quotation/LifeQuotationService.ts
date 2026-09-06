@@ -46,7 +46,7 @@ export class LifeQuotationService {
     const results = await Promise.allSettled(
       eligible.map((p) =>
         p.generateQuote({ insuranceType: 'life', normalizedPayload: normalized, requestId })
-          .then((quotes) => quotes.map((q) => ({ ...q, rawResponse: { ...q.rawResponse, _provider: p.name } })))
+          .then((quotes): QuoteResult[] => quotes.map((q) => ({ ...q, rawResponse: { ...q.rawResponse, _provider: p.name } })))
       ),
     );
 

@@ -164,9 +164,10 @@ export class MetaWhatsAppProvider implements WhatsAppProvider {
     }
   }
 
-  parseWebhook(body: unknown, signature?: string): ParsedWebhook {
+  parseWebhook(body: unknown, signature?: string, rawBody?: Buffer | string): ParsedWebhook {
     if (signature && config.whatsapp.appSecret) {
-      this.verifySignature(JSON.stringify(body), signature);
+      const payload = rawBody !== undefined ? rawBody : JSON.stringify(body);
+      this.verifySignature(payload, signature);
     }
 
     const raw = body as Record<string, unknown>;
@@ -206,13 +207,19 @@ export class MetaWhatsAppProvider implements WhatsAppProvider {
     return null;
   }
 
-  private verifySignature(payload: string, signature: string): void {
+  private verifySignature(payload: string | Buffer, signature: string): void {
     const expected = 'sha256=' + crypto
       .createHmac('sha256', config.whatsapp.appSecret)
       .update(payload)
       .digest('hex');
 
-    if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
+    const signatureBuffer = Buffer.from(signature);
+    const expectedBuffer = Buffer.from(expected);
+
+    if (
+      signatureBuffer.length !== expectedBuffer.length ||
+      !crypto.timingSafeEqual(signatureBuffer, expectedBuffer)
+    ) {
       throw new Error('WhatsApp signature verification failed');
     }
   }

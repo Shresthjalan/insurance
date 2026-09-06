@@ -1,6 +1,6 @@
 import { supabase, unwrap } from '../../db';
 import { Id } from '../../utils/idGenerator';
-import type { Conversation } from '../../types';
+import type { Conversation, Message } from '../../types';
 
 export class ConversationService {
   async findById(id: string): Promise<Conversation | null> {
@@ -57,8 +57,8 @@ export class ConversationService {
     interactiveType?: string;
     interactiveId?: string;
     rawPayloadReference?: string;
-  }) {
-    return unwrap(
+  }): Promise<Message> {
+    return unwrap<Message>(
       await supabase
         .from('messages')
         .insert({ id: Id.message(), ...input, sentAt: new Date().toISOString() })

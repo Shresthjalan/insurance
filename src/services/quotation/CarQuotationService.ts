@@ -81,7 +81,7 @@ export class CarQuotationService {
     const results = await Promise.allSettled(
       eligible.map((p) =>
         p.generateQuote({ insuranceType: 'car', normalizedPayload: normalized, requestId })
-          .then((quotes) => quotes.map((q) => ({ ...q, rawResponse: { ...q.rawResponse, _provider: p.name } })))
+          .then((quotes): QuoteResult[] => quotes.map((q) => ({ ...q, rawResponse: { ...q.rawResponse, _provider: p.name } })))
       ),
     );
 

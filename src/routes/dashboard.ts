@@ -190,7 +190,7 @@ router.get('/appointments', asyncHandler(async (req: Request, res: Response) => 
 
   let query = supabase
     .from('advisor_appointments')
-    .select('*, customers(name, normalizedPhoneNumber)', { count: 'exact' })
+    .select('*, customers(name, phoneNumber, normalizedPhoneNumber), leads(primaryInsuranceType), advisors(name)', { count: 'exact' })
     .order('createdAt', { ascending: false })
     .range(from, from + limit - 1);
 
@@ -199,7 +199,32 @@ router.get('/appointments', asyncHandler(async (req: Request, res: Response) => 
   const { data, count, error } = await query;
   if (error) throw error;
 
-  res.json({ success: true, data: data ?? [], total: count ?? 0, page, limit });
+  const formatted = (data ?? []).map((a: Record<string, unknown>) => {
+    const cust = a.customers as Record<string, unknown> | null;
+    const lead = a.leads as Record<string, unknown> | null;
+    const adv  = a.advisors as Record<string, unknown> | null;
+    const reqDate = a.requestedDate as string;
+    const reqTime = a.requestedTime as string;
+    const scheduledAt = reqDate && reqTime ? new Date(`${reqDate}T${reqTime}:00`).toISOString() : (a.createdAt as string);
+
+    return {
+      id: a.id,
+      customerId: a.customerId,
+      customerName: (cust?.name as string) || (cust?.normalizedPhoneNumber as string) || 'Customer',
+      customerPhone: (cust?.normalizedPhoneNumber as string) || (cust?.phoneNumber as string) || '',
+      insuranceType: (lead?.primaryInsuranceType as string) || 'general',
+      scheduledAt,
+      requestedDate: reqDate,
+      requestedTime: reqTime,
+      status: a.status,
+      advisorName: adv?.name ?? null,
+      notes: a.notes ?? null,
+      source: a.source,
+      createdAt: a.createdAt,
+    };
+  });
+
+  res.json({ success: true, data: formatted, total: count ?? 0, page, limit });
 }));
 
 export { router as dashboardRoutes };

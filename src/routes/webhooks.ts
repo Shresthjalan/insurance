@@ -6,6 +6,7 @@ import { handleTelenowQuotation } from '../webhooks/telenow/quotation';
 import { handleTelenowAdvisor } from '../webhooks/telenow/advisor';
 import { handleWhatsAppWebhook } from '../webhooks/whatsapp/handler';
 import { metaWhatsAppProvider } from '../providers/whatsapp/MetaWhatsAppProvider';
+import { logger } from '../utils/logger';
 import type { Request, Response } from 'express';
 
 const router = Router();
@@ -77,13 +78,21 @@ router.get(
 // POST: inbound events from Meta
 router.post(
   '/whatsapp',
-  asyncHandler(async (req: Request, res: Response) => {
+  (req: Request, res: Response) => {
     const signature = req.headers['x-hub-signature-256'] as string | undefined;
+    const rawBody = (req as Request & { rawBody?: Buffer }).rawBody;
+
     // Respond 200 immediately — WhatsApp requires fast ACK
     res.sendStatus(200);
+
     // Process asynchronously (errors are caught and logged internally)
-    await handleWhatsAppWebhook(req.body, signature);
-  }),
+    handleWhatsAppWebhook(req.body, signature, rawBody).catch((err) => {
+      logger.error('WhatsApp webhook processing error', {
+        error: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+      });
+    });
+  },
 );
 
 export { router as webhookRoutes };

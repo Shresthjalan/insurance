@@ -21,7 +21,9 @@ import path from 'path';
 import { supabase, unwrap } from '../../db';
 import { config } from '../../config';
 import { logger } from '../../utils/logger';
+import { ConflictError } from '../../utils/errors';
 import { generateQuotationPdf } from '../../services/pdf/QuotationPdfGenerator';
+import { dashboardBus } from '../../events/DashboardEventBus';
 import type { WhatsAppInboundMessage, WhatsAppStatusUpdate, InsuranceType, Customer, QuotationRequest } from '../../types';
 
 const providers = [new ProviderAAdapter(), new ProviderBAdapter()];
@@ -47,8 +49,22 @@ function isNonMeaningfulText(text: string): boolean {
 
 // ─── Main entry point ──────────────────────────────────────────────────────────
 
-export async function handleWhatsAppWebhook(body: unknown, signature?: string): Promise<void> {
-  const { messages, statuses } = metaWhatsAppProvider.parseWebhook(body, signature);
+export async function handleWhatsAppWebhook(
+  body: unknown,
+  signature?: string,
+  rawBody?: Buffer | string,
+): Promise<void> {
+  let parsed;
+  try {
+    parsed = metaWhatsAppProvider.parseWebhook(body, signature, rawBody);
+  } catch (err) {
+    logger.error('WhatsApp webhook parsing/signature error', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return;
+  }
+
+  const { messages, statuses } = parsed;
 
   for (const status of statuses) {
     await handleStatusUpdate(status);
@@ -176,6 +192,17 @@ async function processInteraction(
     return;
   }
 
+  // Get new Quote shortcut
+  if (inputId === 'get_quote') {
+    await conversationEngine.startFlow(conversationId, 'insurance_type_selection');
+    const step = await conversationEngine.getCurrentStep(conversationId);
+    if (step) {
+      const msg = messageBuilder.fromStep(step);
+      await whatsAppService.sendMessage(conversationId, customerId, phoneNumber, msg);
+    }
+    return;
+  }
+
   // Talk to advisor shortcut
   if (inputId === 'talk_advisor') {
     await conversationEngine.startFlow(conversationId, 'advisor');
@@ -296,6 +323,13 @@ async function handleConfirmation(
     normalizedPayload,
   });
 
+  dashboardBus.publish('quotation_requested', {
+    customerId,
+    insuranceType,
+    quotationRequestId: quotationRequest.id,
+    source: 'whatsapp',
+  });
+
   await whatsAppService.sendText(
     conversationId,
     customerId,
@@ -334,17 +368,51 @@ async function handleAdvisorConfirmation(
   if (!resolvedDate) return;
 
   const lead = await leadService.findOrCreate({ customerId, source: 'whatsapp' });
-  const appointment = await advisorService.create({
-    customerId,
-    leadId: lead.id,
-    conversationId,
-    requestedDate: resolvedDate,
-    requestedTime: time,
-    timezone: 'Asia/Kolkata',
-    source: 'whatsapp',
-  });
+
+  let appointment;
+  try {
+    appointment = await advisorService.create({
+      customerId,
+      leadId: lead.id,
+      conversationId,
+      requestedDate: resolvedDate,
+      requestedTime: time,
+      timezone: 'Asia/Kolkata',
+      source: 'whatsapp',
+    });
+  } catch (err) {
+    if (err instanceof ConflictError) {
+      const confirmMsg = messageBuilder.appointmentConfirmed(resolvedDate, time);
+      await whatsAppService.sendMessage(conversationId, customerId, phoneNumber, confirmMsg);
+      return;
+    }
+    logger.error('Error creating WhatsApp appointment', {
+      conversation_id: conversationId,
+      customer_id: customerId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    await whatsAppService.sendText(
+      conversationId,
+      customerId,
+      phoneNumber,
+      'Your preferred time slot has been noted. Our advisor will get in touch with you shortly.',
+    );
+    return;
+  }
 
   await leadService.updateStatus(lead.id, 'advisor_requested');
+
+  const customer = await customerService.findById(customerId);
+
+  dashboardBus.publish('appointment_scheduled', {
+    customerId,
+    phone: customer?.normalizedPhoneNumber ?? phoneNumber,
+    name: customer?.name ?? '',
+    appointmentId: appointment.id,
+    requestedDate: resolvedDate,
+    requestedTime: time,
+    source: 'whatsapp',
+  });
 
   const confirmMsg = messageBuilder.appointmentConfirmed(resolvedDate, time);
   await whatsAppService.sendMessage(conversationId, customerId, phoneNumber, confirmMsg);
@@ -543,16 +611,39 @@ function buildNormalizedPayloadFromContext(
 
 // ─── Date helpers ──────────────────────────────────────────────────────────────
 
+function formatYmd(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 function resolveRelativeDate(date: string): string | null {
+  if (!date) return null;
+  const dStr = date.trim();
   const today = new Date();
-  if (date === 'today') {
-    return today.toISOString().split('T')[0];
+  if (dStr === 'today') {
+    return formatYmd(today);
   }
-  if (date === 'tomorrow') {
-    today.setDate(today.getDate() + 1);
-    return today.toISOString().split('T')[0];
+  if (dStr === 'tomorrow') {
+    const tmr = new Date(today);
+    tmr.setDate(tmr.getDate() + 1);
+    return formatYmd(tmr);
   }
-  // Assume it's already a YYYY-MM-DD string or a step key we can't resolve
-  if (/^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
+  // Handle DD/MM/YYYY or DD-MM-YYYY
+  if (/^\d{1,2}[\/-]\d{1,2}[\/-]\d{4}$/.test(dStr)) {
+    const parts = dStr.split(/[\/-]/);
+    const day = parts[0].padStart(2, '0');
+    const month = parts[1].padStart(2, '0');
+    const year = parts[2];
+    return `${year}-${month}-${day}`;
+  }
+  // Handle YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dStr)) return dStr;
+
+  const parsed = new Date(dStr);
+  if (!isNaN(parsed.getTime())) {
+    return formatYmd(parsed);
+  }
   return null;
 }

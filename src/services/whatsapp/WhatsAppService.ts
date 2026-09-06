@@ -56,7 +56,9 @@ export class WhatsAppService {
       providerMessageId: result.providerMessageId,
     });
 
-    await conversationService.setLastUiMessage(conversationId, saved.id);
+    if (saved) {
+      await conversationService.setLastUiMessage(conversationId, saved.id);
+    }
 
     logger.info('WhatsApp message sent', {
       conversation_id: conversationId,
