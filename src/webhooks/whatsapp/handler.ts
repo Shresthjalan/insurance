@@ -16,9 +16,12 @@ import { TermQuotationService } from '../../services/quotation/TermQuotationServ
 import { LifeQuotationService } from '../../services/quotation/LifeQuotationService';
 import { ProviderAAdapter } from '../../providers/quotation/ProviderAAdapter';
 import { ProviderBAdapter } from '../../providers/quotation/ProviderBAdapter';
+import fs from 'fs';
+import path from 'path';
 import { supabase, unwrap } from '../../db';
 import { config } from '../../config';
 import { logger } from '../../utils/logger';
+import { generateQuotationPdf } from '../../services/pdf/QuotationPdfGenerator';
 import type { WhatsAppInboundMessage, WhatsAppStatusUpdate, InsuranceType, Customer, QuotationRequest } from '../../types';
 
 const providers = [new ProviderAAdapter(), new ProviderBAdapter()];
@@ -416,8 +419,15 @@ async function sendQuotePdfs(conversationId: string, customerId: string, phoneNu
     return;
   }
 
+  const pdfDir = path.resolve(process.cwd(), 'uploads', 'pdfs');
   for (const q of latest.quotations) {
     const fileName = `quote_${q.id}_${q.insuranceType}.pdf`;
+    const filePath = path.join(pdfDir, fileName);
+
+    if (!fs.existsSync(filePath)) {
+      await generateQuotationPdf(q, latest.normalizedPayload);
+    }
+
     const pdfUrl = `${config.app.publicBaseUrl}/pdfs/${fileName}`;
     await whatsAppService.sendDocument(
       conversationId,
