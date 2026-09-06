@@ -7,7 +7,7 @@ export const lifeQuotationFlow: FlowDefinition = {
   steps: [
     {
       key: 'product_objective',
-      type: 'button',
+      type: 'list',
       question: 'What is your primary insurance objective?',
       options: [
         { id: 'protection', title: 'Pure Protection' },
@@ -103,7 +103,7 @@ export const lifeQuotationFlow: FlowDefinition = {
     },
     {
       key: 'payment_frequency',
-      type: 'button',
+      type: 'list',
       question: 'How often would you like to pay premiums?',
       options: [
         { id: 'yearly', title: 'Yearly' },

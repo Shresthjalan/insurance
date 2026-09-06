@@ -41,7 +41,7 @@ export const carQuotationFlow: FlowDefinition = {
     },
     {
       key: 'fuel_type',
-      type: 'button',
+      type: 'list',
       question: 'What is the fuel type?',
       options: [
         { id: 'petrol', title: 'Petrol' },
