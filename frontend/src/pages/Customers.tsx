@@ -47,9 +47,11 @@ const STATUS_BADGE: Record<string, string> = {
   negotiation: 'bg-amber-100 text-amber-700',
   closed_won: 'bg-green-100 text-green-700',
   closed_lost: 'bg-red-100 text-red-700',
+  quotation_requested: 'bg-purple-100 text-purple-700',
+  advisor_requested: 'bg-amber-100 text-amber-700',
 }
 
-const POLICY_STATUS_BADGE: Record<PolicyStatus, string> = {
+const POLICY_STATUS_BADGE: Record<string, string> = {
   active: 'bg-green-100 text-green-700',
   pending: 'bg-amber-100 text-amber-700',
   expired: 'bg-red-100 text-red-700',
@@ -90,23 +92,35 @@ function SourceBadge({ source }: { source?: LeadSource | string | null }) {
   )
 }
 
-function StatusBadge({ status }: { status: LeadStatus }) {
+function StatusBadge({ status }: { status?: LeadStatus | string | null }) {
+  if (!status) {
+    return (
+      <span className="inline-block text-xs font-medium px-2 py-0.5 rounded-full capitalize bg-slate-100 text-slate-600">
+        new
+      </span>
+    )
+  }
+  const str = String(status)
+  const label = str.replace(/_/g, ' ')
+  const key = str.toLowerCase()
   return (
     <span
       className={`inline-block text-xs font-medium px-2 py-0.5 rounded-full capitalize ${
-        STATUS_BADGE[status] ?? 'bg-slate-100 text-slate-600'
+        STATUS_BADGE[key] ?? 'bg-slate-100 text-slate-600'
       }`}
     >
-      {status.replace(/_/g, ' ')}
+      {label}
     </span>
   )
 }
 
-function PolicyStatusBadge({ status }: { status: PolicyStatus }) {
+function PolicyStatusBadge({ status }: { status?: PolicyStatus | string | null }) {
+  if (!status) return null
+  const key = String(status).toLowerCase()
   return (
     <span
       className={`inline-block text-xs font-medium px-2 py-0.5 rounded-full capitalize ${
-        POLICY_STATUS_BADGE[status] ?? 'bg-slate-100 text-slate-600'
+        POLICY_STATUS_BADGE[key] ?? 'bg-slate-100 text-slate-600'
       }`}
     >
       {status}
@@ -138,7 +152,14 @@ interface DrawerProps {
 function CustomerDrawer({ customer, onClose }: DrawerProps) {
   if (!customer) return null
 
+  const phone = customer.phone || (customer as any).phoneNumber || (customer as any).normalizedPhoneNumber || '—'
+  const name = customer.name || (phone !== '—' ? phone : 'Unnamed Customer')
   const hasPolicies = customer.policies && customer.policies.length > 0
+
+  const rawInterests = Array.isArray(customer.interests) ? customer.interests : []
+  const interestList = rawInterests
+    .map((item: any) => (typeof item === 'string' ? item : item?.insuranceType))
+    .filter(Boolean)
 
   return (
     <>
@@ -189,7 +210,9 @@ function CustomerDrawer({ customer, onClose }: DrawerProps) {
             )}
             <div className="col-span-2">
               <p className="text-xs text-slate-400 uppercase tracking-wide mb-1">Last Contacted</p>
-              <p className="text-slate-700">{formatDate(customer.lastContactedAt)}</p>
+              <p className="text-slate-700">
+                {formatDate(customer.lastContactedAt || (customer as any).lastContactAt || (customer as any).updatedAt)}
+              </p>
             </div>
           </div>
 
@@ -198,9 +221,9 @@ function CustomerDrawer({ customer, onClose }: DrawerProps) {
             <div>
               <p className="text-xs text-slate-400 uppercase tracking-wide mb-3">Policies</p>
               <div className="space-y-3">
-                {customer.policies!.map((policy) => (
+                {customer.policies!.map((policy, idx) => (
                   <div
-                    key={policy.id}
+                    key={policy.id || `drawer-pol-${idx}`}
                     className="border border-slate-200 rounded-xl p-4 space-y-3 bg-slate-50"
                   >
                     <div className="flex items-center justify-between">
@@ -235,8 +258,8 @@ function CustomerDrawer({ customer, onClose }: DrawerProps) {
             </div>
           )}
 
-          {/* Interests (fallback for API-loaded customers without policy detail) */}
-          {!hasPolicies && customer.interests.length > 0 && (
+          {/* Interests */}
+          {!hasPolicies && interestList.length > 0 && (
             <div>
               <p className="text-xs text-slate-400 uppercase tracking-wide mb-2">Interests</p>
               <div className="space-y-2">
@@ -546,7 +569,7 @@ function AddCustomerModal({ onClose, onAdd }: AddCustomerModalProps) {
                         <label className="block text-xs font-medium text-slate-600 mb-1">Insurance Type</label>
                         <select
                           value={policy.insuranceType}
-                          onChange={(e) => setPolicyField(policy._key, 'insuranceType', e.target.value)}
+                          onChange={(e) => setPolicyField(policy._key, 'insuranceType', e.target.value as InsuranceType)}
                           className={inputCls()}
                         >
                           <option value="life">Life</option>
@@ -583,7 +606,7 @@ function AddCustomerModal({ onClose, onAdd }: AddCustomerModalProps) {
                           />
                           <select
                             value={policy.tenureUnit}
-                            onChange={(e) => setPolicyField(policy._key, 'tenureUnit', e.target.value)}
+                            onChange={(e) => setPolicyField(policy._key, 'tenureUnit', e.target.value as 'months' | 'years')}
                             className="px-2 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white shrink-0"
                           >
                             <option value="years">Yrs</option>
@@ -606,7 +629,7 @@ function AddCustomerModal({ onClose, onAdd }: AddCustomerModalProps) {
                         <label className="block text-xs font-medium text-slate-600 mb-1">Policy Status</label>
                         <select
                           value={policy.status}
-                          onChange={(e) => setPolicyField(policy._key, 'status', e.target.value)}
+                          onChange={(e) => setPolicyField(policy._key, 'status', e.target.value as PolicyStatus)}
                           className={inputCls()}
                         >
                           <option value="active">Active</option>
@@ -707,7 +730,8 @@ export function Customers() {
     if (apiIds.has(lc.id)) return false
     if (filters.search) {
       const q = filters.search.toLowerCase()
-      if (!lc.name.toLowerCase().includes(q) && !lc.phone.includes(q)) return false
+      const lcName = lc.name ? lc.phone.toLowerCase() : ''
+      if (!lcName.includes(q) && !lc.phone.includes(q)) return false
     }
     if (filters.insuranceType && !lc.interests.some((i) => i.insuranceType === filters.insuranceType)) return false
     if (filters.source && lc.leadSource !== filters.source) return false
@@ -854,10 +878,19 @@ export function Customers() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {customers.map((customer) => {
+                  const phone = customer.phone || (customer as any).phoneNumber || (customer as any).normalizedPhoneNumber || '—'
+                  const name = customer.name || (phone !== '—' ? phone : 'Unnamed Customer')
+
                   const displayInterests =
                     customer.policies && customer.policies.length > 0
-                      ? customer.policies.map((p) => ({ id: p.id, insuranceType: p.insuranceType }))
-                      : customer.interests.map((i) => ({ id: i.id, insuranceType: i.insuranceType }))
+                      ? customer.policies.map((p, idx) => ({
+                          id: p.id || `pol-${customer.id}-${idx}`,
+                          insuranceType: p.insuranceType,
+                        }))
+                      : (Array.isArray(customer.interests) ? customer.interests : []).map((i: any, idx: number) => ({
+                          id: typeof i === 'object' && i?.id ? i.id : `interest-${customer.id}-${idx}`,
+                          insuranceType: typeof i === 'string' ? i : i?.insuranceType,
+                        }))
 
                   return (
                     <tr
@@ -866,13 +899,13 @@ export function Customers() {
                       className="hover:bg-slate-50 cursor-pointer transition-colors"
                     >
                       <td className="px-4 py-3">
-                        <p className="font-medium text-slate-800">{customer.name}</p>
-                        <p className="text-xs text-slate-400 mt-0.5">{customer.phone}</p>
+                        <p className="font-medium text-slate-800">{name}</p>
+                        <p className="text-xs text-slate-400 mt-0.5">{phone}</p>
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap gap-1">
-                          {displayInterests.slice(0, 3).map((i) => (
-                            <InsuranceBadge key={i.id} type={i.insuranceType} />
+                          {displayInterests.slice(0, 3).map((i, idx) => (
+                            <InsuranceBadge key={i.id || `badge-${customer.id}-${idx}`} type={i.insuranceType} />
                           ))}
                           {displayInterests.length > 3 && (
                             <span className="text-xs text-slate-400 self-center">
@@ -891,19 +924,16 @@ export function Customers() {
                         <StatusBadge status={customer.leadStatus} />
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <span className="text-slate-700 font-medium">{customer.callCount}</span>
+                        <span className="text-slate-700 font-medium">{customer.callCount ?? 0}</span>
                       </td>
                       <td className="px-4 py-3 text-slate-500 whitespace-nowrap">
-                        {formatDate(customer.lastContactedAt)}
+                        {formatDate(customer.lastContactedAt || (customer as any).lastContactAt || (customer as any).updatedAt)}
                       </td>
                       <td className="px-4 py-3">
                         {customer.upcomingAppointment ? (
                           <div>
                             <p className="text-slate-700 text-xs font-medium whitespace-nowrap">
-                              {new Date(customer.upcomingAppointment.scheduledAt).toLocaleDateString(
-                                'en-US',
-                                { month: 'short', day: 'numeric' },
-                              )}
+                              {formatDate(customer.upcomingAppointment.scheduledAt)}
                             </p>
                             <span
                               className={`text-xs font-medium px-1.5 py-0.5 rounded-full capitalize ${
@@ -912,7 +942,7 @@ export function Customers() {
                                   : 'bg-amber-100 text-amber-700'
                               }`}
                             >
-                              {customer.upcomingAppointment.status}
+                              {customer.upcomingAppointment.status ?? 'requested'}
                             </span>
                           </div>
                         ) : (

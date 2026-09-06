@@ -4,17 +4,48 @@ import type { QuotationProvider } from '../../providers/quotation/QuotationProvi
 import { ValidationError } from '../../utils/errors';
 
 const carSchema = z.object({
-  car_status: z.enum(['new', 'existing']),
+  car_status: z.preprocess((val) => {
+    if (typeof val === 'string') {
+      const lower = val.toLowerCase();
+      if (lower.includes('exist')) return 'existing';
+      if (lower.includes('new')) return 'new';
+    }
+    return val;
+  }, z.enum(['new', 'existing'])),
   vehicle_registration_number: z.string().optional(),
   vehicle_make: z.string().min(1),
   vehicle_model: z.string().min(1),
   vehicle_variant: z.string().optional(),
-  fuel_type: z.enum(['petrol', 'diesel', 'cng', 'electric', 'hybrid']).optional(),
-  registration_year: z.number().int().min(1990).max(new Date().getFullYear() + 1).optional(),
+  fuel_type: z.preprocess((val) => {
+    if (typeof val === 'string') return val.toLowerCase();
+    return val;
+  }, z.enum(['petrol', 'diesel', 'cng', 'electric', 'hybrid']).optional()),
+  registration_year: z.preprocess((val) => {
+    if (typeof val === 'string') {
+      const parsed = parseInt(val, 10);
+      if (!isNaN(parsed)) return parsed;
+    }
+    return val;
+  }, z.number().int().min(1990).max(new Date().getFullYear() + 1).optional()),
   rto: z.string().optional(),
-  policy_new_or_renewal: z.enum(['new', 'renewal']).optional(),
-  previous_claim: z.boolean().optional(),
-  ncb_percentage: z.number().min(0).max(50).optional(),
+  policy_new_or_renewal: z.preprocess((val) => {
+    if (typeof val === 'string') {
+      const lower = val.toLowerCase();
+      if (lower.includes('renew')) return 'renewal';
+      if (lower.includes('new')) return 'new';
+    }
+    return val;
+  }, z.enum(['new', 'renewal']).optional()),
+  previous_claim: z.preprocess((val) => {
+    if (typeof val === 'string') {
+      return val.toLowerCase() === 'true' || val.toLowerCase() === 'yes';
+    }
+    return val;
+  }, z.boolean().optional()),
+  ncb_percentage: z.preprocess((val) => {
+    if (typeof val === 'string') return parseFloat(val);
+    return val;
+  }, z.number().min(0).max(50).optional()),
 });
 
 export class CarQuotationService {

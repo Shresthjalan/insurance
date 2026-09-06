@@ -14,10 +14,40 @@ const advisorSchema = z.object({
   phone_number: z.string().min(7),
   customer_name: z.string().min(1),
   insurance_type: z.enum(['car', 'health', 'term', 'life']),
-  meeting_requested: z.boolean(),
-  meeting_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'meeting_date must be YYYY-MM-DD'),
-  meeting_time: z.string().regex(/^\d{2}:\d{2}$/, 'meeting_time must be HH:MM'),
-  timezone: z.string().default('Asia/Kolkata'),
+  meeting_requested: z.preprocess((val) => {
+    if (typeof val === 'boolean') return val;
+    if (typeof val === 'string') {
+      const lower = val.toLowerCase();
+      return lower === 'true' || lower === 'yes' || lower === '1';
+    }
+    return true;
+  }, z.boolean()),
+  meeting_date: z.preprocess((val) => {
+    if (typeof val === 'string') {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
+      const d = new Date(val);
+      if (!isNaN(d.getTime())) {
+        return d.toISOString().split('T')[0];
+      }
+    }
+    return val;
+  }, z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'meeting_date must be YYYY-MM-DD')),
+  meeting_time: z.preprocess((val) => {
+    if (typeof val === 'string') {
+      if (/^\d{2}:\d{2}$/.test(val)) return val;
+      const match = val.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+      if (match) {
+        let hrs = parseInt(match[1], 10);
+        const mins = match[2];
+        const ampm = match[3]?.toUpperCase();
+        if (ampm === 'PM' && hrs < 12) hrs += 12;
+        if (ampm === 'AM' && hrs === 12) hrs = 0;
+        return `${hrs.toString().padStart(2, '0')}:${mins}`;
+      }
+    }
+    return val;
+  }, z.string().regex(/^\d{2}:\d{2}$/, 'meeting_time must be HH:MM')),
+  timezone: z.string().optional().default('Asia/Kolkata'),
   notes: z.string().optional(),
   external_event_id: z.string().optional(),
 });

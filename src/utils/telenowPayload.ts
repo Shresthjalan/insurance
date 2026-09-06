@@ -35,5 +35,22 @@ export function extractTelenowPayload(body: unknown): Record<string, unknown> {
     payload.customer_name = payload.phone_number ? `Customer (${payload.phone_number})` : 'Valued Customer';
   }
 
+  // If quotation_details is null, undefined, or empty, populate it from the remaining payload fields
+  const details = payload.quotation_details;
+  if (typeof details !== 'object' || details === null || Object.keys(details as object).length === 0) {
+    const reservedKeys = new Set([
+      'phone_number', 'phoneNumber', 'phone', 'caller_phone', 'caller_id', 'from',
+      'customer_name', 'customerName', 'insurance_type', 'insuranceType',
+      'external_event_id', 'externalEventId', 'name', 'quotation_details',
+    ]);
+    const extractedDetails: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(payload)) {
+      if (!reservedKeys.has(key) && value !== null && value !== undefined) {
+        extractedDetails[key] = value;
+      }
+    }
+    payload.quotation_details = extractedDetails;
+  }
+
   return payload;
 }

@@ -12,6 +12,9 @@ import { config } from './config';
 export function createApp() {
   const app = express();
 
+  // ── Trust proxy (required for ngrok / reverse proxies)
+  app.set('trust proxy', 1);
+
   // ── Security headers
   app.use(helmet());
 
